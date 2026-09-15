@@ -1,4 +1,4 @@
-# Claude Code Build Specification for ReNe
+# ReNe Project Build Specification
 
 ## Role and objective
 
@@ -673,7 +673,7 @@ Stop and request user input before finalizing any of these research choices:
 - Safety non-inferiority margin, if used
 - Reduction of seed or episode counts due to time constraints
 
-Claude Code may propose values and explain their consequences, but must not silently turn preliminary values into final research definitions.
+An implementation agent or developer may propose values and explain their consequences, but must not silently turn preliminary values into final research definitions.
 
 ## Human tasks outside AI-generated code
 
@@ -736,7 +736,7 @@ The implementation is complete only when:
 - README commands reproduce a smoke test and small evaluation.
 - The report does not overstate novelty or safety.
 
-## Initial response expected from Claude Code
+## Initial response expected from the implementer
 
 Before editing files, respond with:
 
