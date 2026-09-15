@@ -1,0 +1,25 @@
+environment:
+  duration_s: 20.0
+  dt_s: 0.2
+  decision_interval_s: 1.0
+  merge_point_m: 200.0
+  ramp_end_m: 240.0
+  desired_speed_mps: 25.0
+  initial_gap_m: 30.0
+  min_gap_m: 12.0
+  min_ttc_s: 2.0
+  min_headway_s: 0.8
+  max_accel_mps2: 2.5
+  max_decel_mps2: 4.0
+  invalidation_persistence_s: 0.6
+  oracle_horizon_s: 3.0
+  max_renegotiations: 1
+  render_width: 800
+  render_height: 240
+
+disturbance:
+  type: cut_in
+  trigger_s: 5.0
+  severity: moderate
+  communication_delay_ms: 100
+  packet_loss: 0.05

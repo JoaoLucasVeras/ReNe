@@ -1,0 +1,6 @@
+experiment:
+  episodes: 10
+  seed: 42
+  manager: rule_cancel
+  output_dir: results/raw/smoke
+env_config: configs/env/default.yaml

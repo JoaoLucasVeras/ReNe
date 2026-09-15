@@ -1,0 +1,32 @@
+# Local document-rendering artifacts
+.qa/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.python-version
+.pytest_cache/
+.ruff_cache/
+.matplotlib-cache/
+*.egg-info/
+build/
+dist/
+
+# Experiment artifacts
+models/*
+!models/.gitkeep
+results/raw/*
+!results/raw/.gitkeep
+results/summaries/*
+!results/summaries/.gitkeep
+results/figures/*
+!results/figures/.gitkeep
+runs/
+*.mp4
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

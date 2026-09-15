@@ -1,0 +1,7 @@
+experiment:
+  total_timesteps: 100000
+  n_envs: 4
+  seed: 1
+  output_dir: models/ppo_default
+env_config: configs/env/default.yaml
+agent_config: configs/agents/ppo.yaml
