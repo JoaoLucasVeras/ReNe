@@ -19,16 +19,17 @@ Determine when learned post-acceptance agreement management improves V2X coopera
 
 ## Current focus
 
-**Next milestone: M0, followed by M1 and M2 in parallel.**
+**Current laptop focus: Step 3 / M2 simulator and metric audit. Desktop M0 remains pending.**
 
-The cancellation source paper has not been selected in this tracker. Published-method reproduction, a matched multi-option heuristic, and final statistical validation remain pending. Prototype code and scripts were previously created, but their current desktop behavior and research validity need verification.
+Step 1 selected the cancellation source in [BASELINE_PAPER_SELECTION.md](BASELINE_PAPER_SELECTION.md). Step 2 produced [BASELINE_REPRODUCTION_SPEC.md](BASELINE_REPRODUCTION_SPEC.md), with source traceability, explicitly adapted merge rules, reference tests, and confirmed code gaps. Instructor acceptance of the adaptation remains pending. Next, audit the simulator and metrics before implementing the baseline. Desktop setup, runtime validation, matched renegotiation, and final statistical analysis remain pending.
 
 ### Next work session
 
 - [ ] Confirm current repository state and review any changes since the prototype.
 - [ ] Install and verify the desktop environment.
 - [ ] Run tests, smoke evaluation, and a short rule-based episode.
-- [ ] Shortlist implementable cancellation papers and capture their actual cancellation logic.
+- [x] Shortlist cancellation papers and identify the selected source's actual trigger; see `docs/BASELINE_PAPER_SELECTION.md`.
+- [x] Write the source-to-simulator reproduction specification, including the lane-change-to-merge adaptation; see `docs/BASELINE_REPRODUCTION_SPEC.md`.
 - [ ] Audit simulator dynamics, V2X observations, and metric definitions before extensive training.
 
 ## Milestone map
@@ -65,18 +66,18 @@ The cancellation source paper has not been selected in this tracker. Published-m
 
 ## M1 — Select and specify the literature cancellation method
 
-- [ ] Search recent primary research on maneuver cancellation, agreement invalidation, and cooperative maneuver monitoring.
-- [ ] Read the full methods sections of the strongest candidates.
-- [ ] Prefer an explicit, reproducible algorithm with compatible inputs; record why unsuitable candidates were rejected.
-- [ ] Select one source and verify title, authors, publication date, DOI/URL, and any available code.
-- [ ] Extract equations, cancellation conditions, timing/persistence rules, and parameter definitions.
-- [ ] Separate cancellation logic from unrelated planning/control components.
-- [ ] Map each source input to an available or newly implemented simulator observation.
-- [ ] Document exact reproduction, necessary adaptations, and unavailable components separately.
-- [ ] Define expected behavior for hand-worked reference examples.
+- [x] Search recent primary research on maneuver cancellation, agreement invalidation, and cooperative maneuver monitoring; see `docs/BASELINE_PAPER_SELECTION.md`.
+- [x] Read the selected cancellation method and closest AI method; inspect the cited 2024 protocol background.
+- [x] Compare candidate implementability and record why less suitable sources were not selected; exact simulator compatibility remains for the specification.
+- [x] Select one source and verify title, authors, publication date, DOI/URL; no official code repository was verified.
+- [x] Extract verified cancellation/timing parameters and declare operationalizations where an exact equation was not established; see reproduction specification.
+- [x] Separate cancellation decisions from protocol execution, planning, and emergency safety control.
+- [x] Map required inputs to existing fields or documented implementation gaps; new inputs are not yet implemented.
+- [x] Document component reproduction, merge adaptations, and unavailable components separately.
+- [x] Define expected behavior for hand-worked reference examples.
 - [ ] Seek instructor guidance if adapting the source substantially changes its method.
 
-**Artifact:** `docs/BASELINE_REPRODUCTION_SPEC.md` (create during M1).
+**Artifact:** `docs/BASELINE_REPRODUCTION_SPEC.md` (created; implementation and instructor-guidance gates remain open).
 
 **Gate:** every baseline decision rule traces to the selected source or an explicitly justified adaptation. No invented baseline is labeled a paper reproduction.
 
@@ -273,6 +274,7 @@ Existing entry points (confirm current behavior during M0):
 
 Planned supporting documents:
 
+- Completed selection record: `docs/BASELINE_PAPER_SELECTION.md`
 - `docs/BASELINE_REPRODUCTION_SPEC.md`
 - `docs/SIMULATION_AND_METRIC_DEFINITIONS.md`
 - `docs/EXPERIMENT_PROTOCOL.md`
@@ -312,6 +314,8 @@ A block may span multiple sessions. Preserve baseline fairness, metric validity,
 | Date | Tasks/IDs completed | Evidence/artifact | Finding or blocker | Next action |
 |---|---|---|---|---|
 | 2026-10-01 | Roadmap drafted | This document | Desktop/research gates remain to be verified | Start M0; select source under M1 |
+| 2026-10-01 | Step 1 paper selection | `docs/BASELINE_PAPER_SELECTION.md` | Selected a 2026 cancellation source; maneuver adaptation still needs specification | Step 2: reproduction specification |
+| 2026-10-01 | Step 2 specification and related-work check | `docs/BASELINE_REPRODUCTION_SPEC.md`, `docs/RELATED_WORK_OVERLAP_CHECK.md` | Source and adapted rules separated; communication, geometry, and metric gaps confirmed by inspection | Step 3 / M2 audit; obtain instructor guidance on reproduction scope |
 
 ## Project completion checklist
 
