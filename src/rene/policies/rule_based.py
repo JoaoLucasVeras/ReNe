@@ -8,6 +8,7 @@ from typing import Protocol
 import numpy as np
 
 from rene.agreements.state import ManagerAction
+from rene.envs.manager_inputs import decode
 
 
 class Manager(Protocol):
@@ -27,10 +28,11 @@ class RuleCancelManager:
     max_message_age_s: float = 0.5
 
     def act(self, observation: np.ndarray, info: dict) -> ManagerAction:
+        values = decode(observation)
         if (
-            info["gap_m"] < self.min_gap_m
-            or info["ttc_s"] < self.min_ttc_s
-            or info["message_age_s"] > self.max_message_age_s
+            min(values["front_clearance_m"], values["rear_clearance_m"]) < self.min_gap_m
+            or values["ttc_s"] < self.min_ttc_s
+            or values["message_age_s"] > self.max_message_age_s
         ):
             return ManagerAction.CANCEL
         return ManagerAction.CONTINUE
@@ -42,7 +44,8 @@ class HeuristicRenegotiationManager(RuleCancelManager):
         unsafe = RuleCancelManager.act(self, observation, info) == ManagerAction.CANCEL
         if not unsafe:
             return ManagerAction.CONTINUE
-        if info["renegotiation_count"] == 0 and info["alternative_gap_feasible"]:
+        values = decode(observation)
+        if values["renegotiation_count"] == 0 and values["alternative_gap_feasible"]:
             return ManagerAction.RENEGOTIATE_NEXT_GAP
         return ManagerAction.CANCEL
 

@@ -18,6 +18,8 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output", default="results/figures/example_episode.gif")
     parser.add_argument("--disturbance", default="cut_in")
+    parser.add_argument("--delay-ms", type=float, default=100)
+    parser.add_argument("--loss", type=float, default=0.05)
     parser.add_argument(
         "--frame-ms",
         type=int,
@@ -29,7 +31,14 @@ def main() -> None:
         parser.error("--frame-ms must be positive")
     manager = make_manager(args.manager)
     env = gym.make("ReNeMergeLifecycle-v0", render_mode="rgb_array")
-    obs, info = env.reset(seed=args.seed, options={"disturbance_type": args.disturbance})
+    obs, info = env.reset(
+        seed=args.seed,
+        options={
+            "disturbance_type": args.disturbance,
+            "communication_delay_ms": args.delay_ms,
+            "packet_loss": args.loss,
+        },
+    )
 
     def frame() -> Image.Image:
         picture = Image.fromarray(env.render())
@@ -42,11 +51,17 @@ def main() -> None:
         drawing.text(
             (8, 25),
             "Orange: merging car | Blue: freeway cars | "
-            "Custom Step 3A prototype, not full validation",
+            "Custom Step 3B prototype, not full validation",
             fill=(20, 20, 20),
         )
         drawing.text(
             (8, 42), "Camera follows the orange car; roadway moves past it", fill=(20, 20, 20)
+        )
+        drawing.text(
+            (8, 59),
+            f"V2X age={info['manager_inputs']['message_age_s']:.2f}s  "
+            f"cancel={info['cancel_protocol_state']}",
+            fill=(20, 20, 20),
         )
         return picture
 

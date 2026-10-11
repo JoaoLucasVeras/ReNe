@@ -3,6 +3,7 @@ import numpy as np
 from gymnasium.utils.env_checker import check_env
 
 import rene  # noqa: F401
+from rene.envs.manager_inputs import FEATURES
 
 
 def rollout(seed: int):
@@ -25,7 +26,7 @@ def test_environment_checker():
 
 def test_episode_completes_and_emits_metrics():
     observations, info = rollout(42)
-    assert observations[0].shape == (22,)
+    assert observations[0].shape == (len(FEATURES),)
     assert all(np.isfinite(obs).all() for obs in observations)
     assert "episode_metrics" in info
 

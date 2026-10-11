@@ -28,8 +28,10 @@ information. Learning does not have to win for the project to produce a useful r
 - Step 3A is implemented for the bounded physical fixtures; 35 tests pass.
   See [the implementation record](STEP3A_PHYSICAL_MERGE.md). The custom simulator
   remains primary; full M2 validation is still open.
-- Next implementation task: Step 3B, real message delivery/received information
-  and the shared information/protocol contract.
+- Step 3B is implemented for the abstract channel/protocol fixtures; current suite
+  has 82 passing tests. See [the communication record](STEP3B_COMMUNICATION.md).
+- Next implementation task: Step 3C, physical disturbances and candidate
+  acceptance/execution. M2, literature baselines and final metrics remain open.
 - Desktop setup remains unverified. Reported hardware: Ryzen 5 3600, RTX 3060 Ti,
   32 GB RAM. No GPU is needed for the immediate deterministic repairs.
 
@@ -38,9 +40,9 @@ information. Learning does not have to win for the project to produce a useful r
 1. Read this log, the roadmap's current focus, and the [audit](SIMULATION_AND_METRIC_DEFINITIONS.md).
 2. Check `git status` and the current commit; preserve unrelated or uncommitted work.
    The publication snapshot below is historical, not a substitute for checking Git.
-3. Review Step 3A's implementation record and remaining audit limitations.
+3. Review Step 3A/3B implementation records and remaining audit limitations.
 4. Keep the custom physical simulator for now; HighwayEnv integration remains optional.
-5. Agree on Step 3B's delivery, cache and information-access tests before implementation.
+5. Agree on Step 3C's physical disturbance and candidate/acceptance fixtures before implementation.
 6. After work, append a session entry, update this status and the roadmap, and record
    tests and publication state. Commit or push only when authorized.
 
@@ -49,7 +51,7 @@ information. Learning does not have to win for the project to produce a useful r
 | Step | Work | Completion evidence |
 |---|---|---|
 | 3A completed for bounded fixtures | Moving target gaps, body/lane geometry, physical completion, collision and pairwise safety | 35 tests pass; implementation record and visually checked preview; full M2 still open |
-| 3B | Timestamped message delivery/drop, received-state cache, accumulating age, protocol substates and shared observation contract | Perfect communication, delayed delivery and prolonged outage traces; no privileged state leakage |
+| 3B implemented for abstract fixtures | Timestamped delivery/drop, received cache, ages, cancellation/ACK/timeout, shared inputs | 82 tests pass; diagnostic traces; peer physical cooperative actuation remains pending |
 | 3C | Physical disturbances and shared candidate trajectories, with bounded controls and acceptance behavior | Each candidate and disturbance has a physical effect; no artificial gap bonuses |
 | 3D | Event-based metric accounting, decision-time traces and counterfactual cancellation evaluation | Hand-calculated metric cases and regression tests |
 | 3E | Review corrected scenarios, communication, density/severity and fallback | M2 validation evidence, not merely passing API tests |
@@ -155,14 +157,52 @@ not rerun for this log.
 - Next task is planning/approval for Step 3B; no communication implementation is
   included in this publication session.
 
+### October 10 2026 communication implementation
+
+- Implemented Step 3B after owner approval: delayed/lossy timestamped messages,
+  independent beacon/control RNG streams, cache ordering, cancellation retries,
+  acknowledgment/token/expiry handling and timeout.
+- Rules decode the same 35-feature vector supplied to PPO; no hidden neighbor
+  truth or injected mismatch labels are policy inputs. Old checkpoints are incompatible.
+- Disabled all provisional revisions until Step 3C can execute/acknowledge real candidates.
+- Validation: 82 tests and lint pass; perfect/outage/high-delay traces, smoke and
+  audit scripts ran. Complete loss yields growing age and timeout, not remote release.
+- Evidence: [STEP3B_COMMUNICATION.md](STEP3B_COMMUNICATION.md),
+  `tests/test_communication.py`, `scripts/trace_communication.py`; generated
+  JSON/CSV/GIF evidence under Git-ignored `results/`.
+- No source-method reproduction, PPO training or full baseline experiments. Metric
+  and physical disturbance limitations remain; full M2 gate is open.
+- Publication: Step 3A and prior records were pushed as `9976057`; Step 3B changes
+  are local only, with no new commit/push authorized in this session.
+- Next task: plan Step 3C physical disturbances and shared candidate acceptance/execution.
+
+### October 10 2026 Step 3B publication and Step 3C planning
+
+- User authorized committing/pushing Step 3B, then planning the next step.
+- Rechecked the full suite: 82 tests and lint pass. Publication scope is the
+  communication model, shared inputs, cancellation execution, traces/tests/config,
+  preview support and associated project records. Unrelated notes and generated
+  artifacts are excluded. Author/committer remain JoaoLucasVeras without coauthor trailers.
+- Step 3C proposed sequence: physical cut-in/braking/intent-mismatch fixtures;
+  one shared candidate generator; message-based proposal acceptance/rejection/expiry;
+  bounded execution and tests for stale proposals, loss and unsafe candidates.
+- Proposed scope control: begin with physical timing revisions; add next-gap only
+  after a real alternative vehicle pair is represented and communicated. Keep
+  unsupported order-swap disabled rather than synthesize space or capability.
+- This is planning only; no Step 3C implementation in the publication session.
+  Review and approve the first slice before changing physical disturbance behavior.
+- The commit containing this entry records the authorized publication scope;
+  push confirmation is reported separately and can be checked against remote Git.
+
 ## Publication snapshot
 
 At the October 1 push, the research documents and then-current roadmap were
 published in `ce7d47c`. At the October 10 documentation session, the audit document,
 audit script and subsequent roadmap edits were still local, alongside this log
-and its navigation edits. They must be committed and pushed before another
-machine can retrieve them through GitHub. Unrelated untracked files are outside
-this documentation task and must not be staged automatically.
+and its navigation edits. Those records and Step 3A were subsequently pushed as
+`9976057`. Step 3B and updated records are now authorized for publication in the
+commit containing the latest session entry; check local/remote Git heads when resuming.
+Unrelated untracked files must not be staged automatically.
 
 ## Session entry template
 

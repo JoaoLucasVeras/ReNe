@@ -8,7 +8,6 @@ cross-validation.
 
 from __future__ import annotations
 
-from dataclasses import asdict
 from itertools import combinations
 from typing import Any
 
@@ -16,6 +15,7 @@ import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
 
+from rene.agreements.communication import PEERS, CommunicationModel
 from rene.agreements.feasibility import evaluate_feasibility
 from rene.agreements.protocol import create_accepted_agreement
 from rene.agreements.state import AgreementState, ManagerAction
@@ -27,6 +27,7 @@ from rene.envs.geometry import (
     longitudinal_ttc,
     swept_overlap,
 )
+from rene.envs.manager_inputs import FEATURES, INPUT_VERSION, decode, encode
 from rene.metrics.episode_metrics import EpisodeMetrics
 from rene.safety.shield import ShieldDecision, apply_shield
 
@@ -59,6 +60,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "disturbance_severity": "moderate",
     "communication_delay_ms": 100,
     "packet_loss": 0.05,
+    "beacon_interval_s": 0.1,
+    "cancel_retry_s": 0.1,
+    "cancel_timeout_s": 3.0,
     "traffic_density": "medium",
 }
 
@@ -104,7 +108,7 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
         if render_mode not in {None, "rgb_array"}:
             raise ValueError("supported render modes are None and 'rgb_array'")
         self.action_space = spaces.Discrete(len(ManagerAction))
-        self.observation_space = spaces.Box(-1.0, 1.0, shape=(22,), dtype=np.float32)
+        self.observation_space = spaces.Box(-1.0, 1.0, shape=(len(FEATURES),), dtype=np.float32)
         self._episode_seed = 0
         self._episode_id = ""
         self._invalid_since_s: float | None = None
@@ -168,7 +172,7 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
                 options.get("disturbance_trigger_s", self.config["disturbance_trigger_s"])
             ),
             severity=options.get("disturbance_severity", self.config["disturbance_severity"]),
-            delay_ms=int(
+            delay_ms=float(
                 options.get("communication_delay_ms", self.config["communication_delay_ms"])
             ),
             packet_loss=float(options.get("packet_loss", self.config["packet_loss"])),
@@ -185,7 +189,9 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
         ):
             raise ValueError("initial lane-change plan does not fit the merge corridor")
         self.agreement = create_accepted_agreement(
-            self._episode_id, planned_merge_time_s=float(planned_time)
+            self._episode_id,
+            planned_merge_time_s=float(planned_time),
+            agreement_id=f"{self._episode_id}-agreement-0",
         )
         self.agreement.transition(AgreementState.EXECUTING, self.time_s)
         self.metrics = EpisodeMetrics(episode_id=self._episode_id, seed=self._episode_seed)
@@ -193,6 +199,17 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
             raise ValueError("initial accepted agreement does not have a safe moving target gap")
         self.agreement.feasible = self._feasibility().feasible
         self.agreement.feasibility_reason = self._feasibility().reason
+        self.communication = CommunicationModel(
+            self._episode_seed,
+            self.agreement.agreement_id,
+            self.disturbance.delay_ms / 1000.0,
+            self.disturbance.packet_loss,
+            self.config["beacon_interval_s"],
+            self.config["cancel_retry_s"],
+            self.config["cancel_timeout_s"],
+        )
+        self.communication.bootstrap(self._beacon_payloads())
+        self.agreement.message_count = 0  # Initial negotiation is an assumed fixture.
         observation = self._observation()
         return observation, self._info()
 
@@ -318,20 +335,13 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
         )
 
     def _renegotiation_feasible(self, action: ManagerAction) -> bool:
-        if self.agreement.renegotiation_count >= self.config["max_renegotiations"]:
-            return False
-        if action == ManagerAction.RENEGOTIATE_NEXT_GAP:
-            return False  # No physical replacement vehicle pair exists yet (Step 3C).
-        if action == ManagerAction.RENEGOTIATE_DELAY:
-            return self.distance_to_merge_m > 15.0
-        if action == ManagerAction.RENEGOTIATE_ADVANCE:
-            return self.gap_m >= self.config["min_gap_m"] * 0.9
-        if action == ManagerAction.RENEGOTIATE_SWAP_ORDER:
-            return False  # Unsupported until physical candidate trajectories exist.
-        return True
+        # All revisions await a physical acceptance executor in Step 3C.
+        return action.family != "renegotiate"
 
     def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         requested = ManagerAction(int(action))
+        decision_time_s = self.time_s
+        decision_inputs = decode(self._observation())
         feasibility = self._feasibility()
         if self.agreement.state == AgreementState.CANCELED:
             shield = ShieldDecision(
@@ -357,7 +367,7 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
         self.metrics.total_reward += reward
 
         terminated = self.completed or self.collision
-        truncated = self.time_s >= self.config["duration_s"] and not terminated
+        truncated = self.time_s >= self.config["duration_s"] - 1e-9 and not terminated
         if truncated and self.agreement.state not in {
             AgreementState.CANCELED,
             AgreementState.COMPLETED,
@@ -367,6 +377,8 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
         self._decision_log.append(
             {
                 "time_s": self.time_s,
+                "decision_time_s": decision_time_s,
+                "manager_inputs": decision_inputs,
                 "requested_action": requested.name,
                 "applied_action": applied.name,
                 "overridden": shield.overridden,
@@ -375,7 +387,7 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
                 "feasibility_reason": feasibility.reason,
                 "gap_m": self.gap_m,
                 "ttc_s": self.ttc_s,
-                "message_age_s": self.disturbance.message_age_s,
+                "message_age_s": max(self.communication.ages(self.time_s).values()),
                 **{f"reward_{k}": v for k, v in reward_components.items()},
             }
         )
@@ -384,6 +396,7 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
             self._finalize_metrics()
             info["episode_metrics"] = self.metrics.as_dict()
             info["decision_log"] = list(self._decision_log)
+            info["communication_log"] = list(self.communication.bus.events)
         return self._observation(), reward, terminated, truncated, info
 
     def _apply_lifecycle_action(self, action: ManagerAction) -> None:
@@ -399,7 +412,8 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
             self.canceled = True
             self.fallback_active = True
             self.metrics.canceled = True
-            self.agreement.message_count += 1
+            self.communication.session.request(self.time_s)
+            self.communication.advance(self.time_s, lambda at: self._beacon_payloads())
             return
         if action.family != "renegotiate":
             return
@@ -427,11 +441,37 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
         }
         substeps = max(1, round(self.config["decision_interval_s"] / self.config["dt_s"]))
         for _ in range(substeps):
+            if self.time_s >= self.config["duration_s"] - 1e-9:
+                break
+            dt = min(self.config["dt_s"], self.config["duration_s"] - self.time_s)
             before = self._bodies()
+            before_time = self.time_s
             self.disturbance.update(self.time_s, self.np_random)
             self._apply_disturbance()
-            self._advance_vehicles()
-            self.time_s += self.config["dt_s"]
+            payloads_before = self._beacon_payloads()
+            self._advance_vehicles(dt)
+            self.time_s += dt
+            payloads_after = self._beacon_payloads()
+
+            def sample(
+                at_s,
+                before_time=before_time,
+                payloads_before=payloads_before,
+                payloads_after=payloads_after,
+                dt=dt,
+            ):
+                fraction = float(np.clip((at_s - before_time) / dt, 0, 1))
+                return {
+                    peer: {
+                        "x_m": payloads_before[peer]["x_m"]
+                        + fraction * (payloads_after[peer]["x_m"] - payloads_before[peer]["x_m"]),
+                        "speed_mps": payloads_before[peer]["speed_mps"],
+                    }
+                    for peer in PEERS
+                }
+
+            self.communication.advance(self.time_s, sample)
+            self.agreement.message_count = self.communication.counts()["sent"]
 
             feasibility = self._feasibility()
             self.agreement.feasible = feasibility.feasible
@@ -445,11 +485,11 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
             self.metrics.min_headway_s = min(self.metrics.min_headway_s, self.actual_headway_s)
             if self.ttc_s < self.config["min_ttc_s"]:
                 self.metrics.near_collision = True
-                components["near_collision"] -= 0.5 * self.config["dt_s"]
+                components["near_collision"] -= 0.5 * dt
             if self._invalid_since_s is not None:
                 invalid_duration = self.time_s - self._invalid_since_s
                 if invalid_duration >= self.config["invalidation_persistence_s"]:
-                    components["failed_time"] -= 0.2 * self.config["dt_s"]
+                    components["failed_time"] -= 0.2 * dt
 
             after = self._bodies()
             if any(
@@ -469,7 +509,7 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
                 if self.agreement.revision > 0:
                     self.metrics.renegotiation_successes = 1
                 break
-            components["progress"] += 0.02 * self.config["dt_s"]
+            components["progress"] += 0.02 * dt
         if self.canceled:
             components["cancel"] -= 0.1
         components["message"] -= 0.01 * self.agreement.message_count
@@ -492,8 +532,8 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
             self._intent_speed_error_mps = 3.0 * scale
             self._intent_inconsistency_count += 1
 
-    def _advance_vehicles(self) -> None:
-        dt = self.config["dt_s"]
+    def _advance_vehicles(self, dt_s: float | None = None) -> None:
+        dt = self.config["dt_s"] if dt_s is None else dt_s
         target_speed = 18.0 if self.fallback_active else self.config["desired_speed_mps"]
         # A canceled ego may merge under fallback only if the same physical pair
         # remains safe. Otherwise it stays/returns to the ramp and stops at its end.
@@ -587,62 +627,124 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
         self.rear_x_m += self.rear_speed_mps * dt
 
     def _observation(self) -> np.ndarray:
-        prior = float(self.agreement.last_applied_action) / max(len(ManagerAction) - 1, 1)
-        raw = np.array(
-            [
-                self.ramp_speed_mps / 40.0,
-                self.ramp_accel_mps2 / 5.0,
-                self.front_speed_mps / 40.0,
-                self.rear_speed_mps / 40.0,
-                (self.front_x_m - self.ramp_x_m) / 200.0,
-                (self.ramp_x_m - self.rear_x_m) / 200.0,
-                self.gap_m / 60.0,
-                self.distance_to_merge_m / 250.0,
-                min(self.ttc_s, 20.0) / 20.0,
-                self.headway_s / 5.0,
-                self.agreement.merge_order,
-                self.agreement.target_gap_id / 5.0,
-                (self.agreement.planned_merge_time_s - self.time_s) / 20.0,
-                (self.time_s - self.agreement.accepted_at_s) / 20.0,
-                np.clip(self.ramp_x_m / self.config["merge_point_m"], 0.0, 1.0),
-                self.agreement.revision / 3.0,
-                prior,
-                self.disturbance.message_age_s / 2.0,
-                self.disturbance.packet_loss,
-                self._intent_position_error_m / 20.0,
-                self._intent_speed_error_mps / 10.0,
-                self._intent_inconsistency_count / 10.0,
-            ],
-            dtype=np.float32,
+        return encode(self._manager_values())
+
+    def _beacon_payloads(self) -> dict[str, dict]:
+        return {
+            PEERS[0]: {"x_m": self.front_x_m, "speed_mps": self.front_speed_mps},
+            PEERS[1]: {"x_m": self.rear_x_m, "speed_mps": self.rear_speed_mps},
+        }
+
+    def _manager_values(self) -> dict:
+        ages = self.communication.ages(self.time_s)
+        cache = self.communication.cache
+        # Constant-speed extrapolation uses ONLY last delivered payload + its age.
+        # Do not use simulator neighbor motion to correct the received estimate.
+        estimated = {}
+        for peer in PEERS:
+            message = cache.get(peer)
+            estimated[peer] = (
+                (
+                    message.payload["x_m"] + message.payload["speed_mps"] * ages[peer],
+                    message.payload["speed_mps"],
+                )
+                if message
+                else (self.ramp_x_m, 0.0)
+            )
+        front_x, front_speed = estimated[PEERS[0]]
+        rear_x, rear_speed = estimated[PEERS[1]]
+        length = self.config["vehicle_length_m"]
+        width = self.config["vehicle_width_m"]
+        ego = VehicleBody(self.ramp_x_m, 0.0, length, width)
+        front = VehicleBody(front_x, 0.0, length, width)
+        rear = VehicleBody(rear_x, 0.0, length, width)
+        front_clearance = bumper_clearance(ego, front)
+        rear_clearance = bumper_clearance(rear, ego)
+        ttc = min(
+            longitudinal_ttc(ego, self.ramp_speed_mps, front, front_speed),
+            longitudinal_ttc(rear, rear_speed, ego, self.ramp_speed_mps),
         )
-        return np.clip(raw * 2.0 - 1.0, -1.0, 1.0).astype(np.float32)
+        headway = min(
+            max(front_clearance, 0.0) / max(self.ramp_speed_mps, 0.1),
+            max(rear_clearance, 0.0) / max(rear_speed, 0.1),
+        )
+        session = self.communication.session
+        return {
+            "ego_speed_mps": self.ramp_speed_mps,
+            "ego_accel_mps2": self.ramp_accel_mps2,
+            "ego_lateral_m": self.ramp_y_m,
+            "distance_to_merge_m": self.distance_to_merge_m,
+            "distance_to_ramp_end_m": self.config["ramp_end_m"] - self.ramp_x_m,
+            "front_speed_mps": front_speed,
+            "rear_speed_mps": rear_speed,
+            "front_relative_m": front_x - self.ramp_x_m,
+            "rear_relative_m": self.ramp_x_m - rear_x,
+            "front_clearance_m": front_clearance,
+            "rear_clearance_m": rear_clearance,
+            "gap_m": front_x - rear_x - length,
+            "ttc_s": min(ttc, 20.0),
+            "ttc_finite": float(np.isfinite(ttc)),
+            "headway_s": headway,
+            "message_age_s": max(ages.values()),
+            "front_message_age_s": ages[PEERS[0]],
+            "rear_message_age_s": ages[PEERS[1]],
+            "front_received": float(PEERS[0] in cache),
+            "rear_received": float(PEERS[1] in cache),
+            "remaining_plan_s": self.agreement.planned_merge_time_s - self.time_s,
+            "agreement_age_s": self.time_s - self.agreement.accepted_at_s,
+            "revision": self.agreement.revision,
+            "renegotiation_count": self.agreement.renegotiation_count,
+            "prior_action": float(self.agreement.last_applied_action),
+            "merge_order": self.agreement.merge_order,
+            "target_gap_id": self.agreement.target_gap_id,
+            "cancel_pending": float(session.state == "cancel_pending"),
+            "cancel_confirmed": float(session.state == "cancel_confirmed"),
+            "cancel_timed_out": float(session.state == "timed_out"),
+            "cancel_ack_count": len(session.acknowledged),
+            "alternative_gap_feasible": 0.0,
+            "local_canceled": float(self.canceled),
+            "time_s": self.time_s,
+            "local_agreement_state": list(AgreementState).index(self.agreement.state),
+        }
 
     def _info(self) -> dict[str, Any]:
+        values = decode(self._observation())
+        estimated = evaluate_feasibility(
+            gap_m=min(values["front_clearance_m"], values["rear_clearance_m"]),
+            ttc_s=values["ttc_s"],
+            headway_s=values["headway_s"],
+            distance_to_merge_m=values["distance_to_ramp_end_m"],
+            speed_mps=values["ego_speed_mps"],
+            min_gap_m=self.config["min_gap_m"],
+            min_ttc_s=self.config["min_ttc_s"],
+            min_headway_s=self.config["min_headway_s"],
+        )
         return {
             "episode_id": self._episode_id,
             "time_s": self.time_s,
-            "gap_m": self.gap_m,
-            "ttc_s": self.ttc_s,
-            "headway_s": self.headway_s,
-            "actual_headway_s": self.actual_headway_s,
-            "target_slot_ttc_s": self.target_slot_ttc_s,
-            "front_clearance_m": self.front_clearance_m,
-            "rear_clearance_m": self.rear_clearance_m,
-            "ramp_y_m": self.ramp_y_m,
-            "low_level_interventions": self.low_level_interventions,
+            "manager_inputs": values,
+            "input_version": INPUT_VERSION,
             "physics_version": "step3a-axis-aligned-v1",
-            "disturbance_physics_validated": self.disturbance.disturbance_type == "none",
-            "message_age_s": self.disturbance.message_age_s,
             "agreement_state": self.agreement.state.value,
-            "agreement_feasible": self.agreement.feasible,
-            "feasibility_reason": self.agreement.feasibility_reason,
-            "renegotiation_count": self.agreement.renegotiation_count,
-            "alternative_gap_feasible": False,
-            "disturbance": asdict(self.disturbance),
+            "agreement_feasible": estimated.feasible,  # Received-data estimate, not truth.
+            "feasibility_reason": estimated.reason,
+            "cancel_protocol_state": self.communication.session.state,
         }
 
     def _finalize_metrics(self) -> None:
-        self.metrics.message_count = self.agreement.message_count
+        counts = self.communication.counts()
+        self.metrics.message_count = counts["sent"]
+        self.metrics.messages_delivered = counts["delivered"]
+        self.metrics.messages_dropped = counts["dropped"]
+        self.metrics.messages_in_flight = counts["sent"] - counts["delivered"] - counts["dropped"]
+        self.metrics.cancel_protocol_state = self.communication.session.state
+        self.metrics.beacons_sent = self.communication.bus.kind_counts[("sent", "beacon")]
+        self.metrics.control_messages_sent = self.metrics.message_count - self.metrics.beacons_sent
+        session = self.communication.session
+        self.metrics.cancel_requested_at_s = session.requested_at_s
+        self.metrics.cancel_confirmed_at_s = session.confirmed_at_s
+        self.metrics.cancel_timed_out_at_s = session.timed_out_at_s
+        self.communication.bus.log("episode_terminal", self.time_s, protocol_state=session.state)
         self.metrics.merge_completion_time_s = self.time_s if self.completed else 0.0
         if self._invalid_since_s is not None:
             self.metrics.failed_agreement_duration_s = max(0.0, self.time_s - self._invalid_since_s)

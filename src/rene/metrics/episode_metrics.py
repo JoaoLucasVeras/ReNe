@@ -11,6 +11,16 @@ class EpisodeMetrics:
     seed: int
     manager: str = "external"
     physics_version: str = "step3a-axis-aligned-v1"
+    input_version: str = "received-state-v1"
+    messages_delivered: int = 0
+    messages_dropped: int = 0
+    cancel_protocol_state: str = "active"
+    beacons_sent: int = 0
+    control_messages_sent: int = 0
+    messages_in_flight: int = 0
+    cancel_requested_at_s: float | None = None
+    cancel_confirmed_at_s: float | None = None
+    cancel_timed_out_at_s: float | None = None
     collision: bool = False
     near_collision: bool = False
     completed_merge: bool = False

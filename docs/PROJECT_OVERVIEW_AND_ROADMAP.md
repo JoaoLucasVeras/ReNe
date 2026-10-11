@@ -107,7 +107,9 @@ training and final research comparisons remain pending.
 
 October 10 update: [Step 3A is implemented](STEP3A_PHYSICAL_MERGE.md) and checked
 against bounded physical fixtures. 35 tests pass; the full validation gate is
-still open. Our next implementation task is Step 3B.
+still open. Step 3B now adds real message delivery/cache and cancellation handling;
+see [the communication record](STEP3B_COMMUNICATION.md). The next implementation
+task is Step 3C; 82 software tests currently pass.
 
 The phases below summarize the detailed [TODO tracker](PROJECT_ROADMAP.md).
 Check them only when their completion evidence exists. No fixed calendar dates
@@ -121,7 +123,7 @@ are assigned because the semester deadline and repair effort are not yet establi
   create valid moving gaps, represent vehicle sizes and lane positions, and define
   a merge as actually entering the intended lane/gap safely. Correct collision
   and vehicle-to-vehicle safety calculations.
-- [ ] **Step 3B: fix communication.** Send timestamped messages, deliver or drop them,
+- [x] **Step 3B: fix communication for the abstract fixtures.** Send timestamped messages, deliver or drop them,
   keep the last received state, and make information become older during outages.
   Define how agreement changes are acknowledged or expire.
 - [ ] **Step 3C: fix disturbances and revised plans.** Make cut-ins and braking change
@@ -187,10 +189,10 @@ correctly. Beating the rules is an experimental outcome, not an implementation r
 
 ## What exactly should we do next?
 
-**Review the Step 3A results, then scope Step 3B.** Define when messages are sent,
-how they arrive or are lost, what information each vehicle actually receives,
-and how an agreement change is acknowledged. The corrected geometry is a
-foundation, not a reason to skip communication or metric validation.
+**Review Step 3A/3B results, then scope Step 3C.** Define actual cut-in/braking
+motion and how feasible revised plans are proposed, accepted and physically
+executed. Communication is now meaningful, but disturbances and metrics still
+need validation before the baseline comparison.
 
 The overview was initially created as documentation only. The subsequent approved
 Step 3A implementation is recorded separately; no PPO training, commit or push
@@ -204,7 +206,6 @@ has been performed in that implementation session.
 - [SIMULATION_AND_METRIC_DEFINITIONS.md](SIMULATION_AND_METRIC_DEFINITIONS.md): audit evidence and required metric corrections.
 - [BASELINE_REPRODUCTION_SPEC.md](BASELINE_REPRODUCTION_SPEC.md): source rules versus merge adaptations.
 
-Research documents were pushed in commit `ce7d47c`. The subsequent audit,
-progress-log and navigation updates, including this overview, remain local at
-this session. They need an authorized commit/push before another machine can
-retrieve them through GitHub.
+Research documents were pushed in `ce7d47c`; Step 3A and the audit/progress records
+were then pushed in `9976057`. The owner has now authorized Step 3B publication;
+see the project log and latest Git history for its scope and revision.

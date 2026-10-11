@@ -12,9 +12,10 @@ def create_accepted_agreement(
     target_gap_id: int = 0,
     merge_order: int = 1,
     planned_merge_time_s: float = 8.0,
+    agreement_id: str | None = None,
 ) -> Agreement:
     return Agreement(
-        agreement_id=str(uuid4()),
+        agreement_id=agreement_id or str(uuid4()),
         episode_id=episode_id,
         participants=("ramp", "mainline_front", "mainline_rear"),
         target_gap_id=target_gap_id,

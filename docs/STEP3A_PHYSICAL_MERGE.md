@@ -6,6 +6,10 @@ authorized publication on October 10; see the project log and Git history for
 publication scope and revision. This step keeps the custom Gymnasium simulator as the
 primary development implementation; HighwayEnv integration is not included.
 
+This is the Step 3A implementation record. Subsequent [Step 3B](STEP3B_COMMUNICATION.md)
+adds delivery/cache/protocol handling, replaces the observation contract with 35
+features and disables all provisional timing revisions pending Step 3C.
+
 ## What changed in simple terms
 
 The merging car now moves sideways into the freeway lane between the actual

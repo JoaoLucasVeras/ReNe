@@ -23,7 +23,7 @@ Determine when learned post-acceptance agreement management improves V2X coopera
 
 ## Current focus
 
-**Current laptop focus: Step 3B / M2 communication and information contract. Desktop M0 remains pending.**
+**Current laptop focus: Step 3C / M2 physical disturbances and candidate execution. Desktop M0 remains pending.**
 
 Steps 1 and 2 documented the cancellation source and reproduction specification.
 The October 1 audit in [SIMULATION_AND_METRIC_DEFINITIONS.md](SIMULATION_AND_METRIC_DEFINITIONS.md)
@@ -36,6 +36,12 @@ geometry, bounded lateral merging, swept collision checks, pairwise safety and
 stabilized completion. 35 tests and lint pass; 90 undisturbed diagnostic episodes
 complete without collisions. The custom simulator remains primary. Next is 3B;
 physical disturbances/candidates, metric accounting and full M2 validation remain open.
+
+Step 3B update: [timestamped communication](STEP3B_COMMUNICATION.md), cached
+received estimates and a 35-feature shared policy contract are implemented.
+Cancellation now has retries, peer receipts, acknowledgments and timeout.
+82 tests and lint pass. All renegotiation actions await physical candidates and
+acceptance in Step 3C; M2 is still open.
 
 ### Next work session
 
@@ -112,12 +118,12 @@ physical disturbances/candidates, metric accounting and full M2 validation remai
 ### V2X abstraction
 
 - [x] Trace how delay, loss, message age, and communicated intent are generated and used; current scalar proxy does not delay state observations (A04).
-- [ ] Ensure delayed/lost messages affect received information or declared protocol behavior, not only an unrelated scalar feature.
-- [ ] Distinguish sensor observations, received V2X data, and privileged simulator ground truth.
-- [ ] Ensure no manager receives unacknowledged future state or perfect communicated intent.
-- [x] Document whether message delivery is modeled explicitly or through an approximation; no delivery queue or received cache exists yet.
-- [ ] Validate zero-delay/zero-loss and stale/lost-message examples with deterministic traces.
-- [x] State the abstraction limits: no full wireless stack, propagation model, or actual delayed-state delivery is currently implemented.
+- [x] Ensure delayed/lost messages affect received information and cancellation timing; Step 3B fixtures pass.
+- [x] Distinguish own measurements, received V2X estimates and evaluator/safety-only truth; no neighbor sensor model is implied.
+- [x] Check prototype managers use the same encoded received-data contract, not hidden neighbor truth; future B2/B3 must preserve it.
+- [x] Document explicit abstract delivery/cache in Step 3B; fixed delay and independent loss, not a wireless stack.
+- [x] Validate zero-delay/zero-loss, stale/outage/recovery and cancellation examples with deterministic Step 3B tests and traces.
+- [x] State the abstraction limits: no wireless stack or propagation model; actual delayed-state delivery now exists under the declared abstraction.
 
 ### Metrics and shield
 
@@ -273,6 +279,8 @@ physical disturbances/candidates, metric accounting and full M2 validation remai
 **Gate:** another reader can reproduce a small experiment and understand the evidence behind the final claims.
 
 ## Working artifact index
+
+- Communication and input contract: [STEP3B_COMMUNICATION.md](STEP3B_COMMUNICATION.md)
 
 - Physical geometry implementation and checks: [STEP3A_PHYSICAL_MERGE.md](STEP3A_PHYSICAL_MERGE.md)
 

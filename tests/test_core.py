@@ -1,10 +1,9 @@
-import numpy as np
 import pytest
 
+from rene.agreements.communication import MessageBus
 from rene.agreements.feasibility import FeasibilityResult, evaluate_feasibility
 from rene.agreements.protocol import create_accepted_agreement
 from rene.agreements.state import AgreementState, ManagerAction
-from rene.disturbances.base import DisturbanceState
 from rene.safety.shield import apply_shield
 
 
@@ -44,9 +43,15 @@ def test_small_gap_is_infeasible_and_continue_is_blocked():
 
 
 def test_seeded_packet_delivery_is_reproducible():
-    first = DisturbanceState("cut_in", trigger_s=2.0, packet_loss=0.5)
-    second = DisturbanceState("cut_in", trigger_s=2.0, packet_loss=0.5)
-    first.update(2.0, np.random.default_rng(7))
-    second.update(2.0, np.random.default_rng(7))
-    assert first.triggered
-    assert first.message_received == second.message_received
+    first, second = MessageBus(7, 0.1, 0.5), MessageBus(7, 0.1, 0.5)
+    for bus in (first, second):
+        bus.send(
+            sender="mainline_front",
+            receiver="ramp",
+            kind="beacon",
+            agreement_id="a",
+            revision=0,
+            time_s=2.0,
+            payload={"x_m": 10},
+        )
+    assert first.events == second.events

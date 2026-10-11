@@ -20,6 +20,9 @@ environment:
   invalidation_persistence_s: 0.6
   oracle_horizon_s: 3.0
   max_renegotiations: 1
+  beacon_interval_s: 0.1
+  cancel_retry_s: 0.1
+  cancel_timeout_s: 3.0
   render_width: 800
   render_height: 240
 

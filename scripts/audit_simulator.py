@@ -100,7 +100,7 @@ def targeted_probes() -> dict:
     env.reset(seed=42, options={"disturbance_type": "none", "packet_loss": 1.0})
     for _ in range(3):
         env.step(int(ManagerAction.CONTINUE))
-        ages.append(env.disturbance.message_age_s)
+        ages.append(max(env.communication.ages(env.time_s).values()))
     env.close()
     return {
         "after_one_second": first_second,

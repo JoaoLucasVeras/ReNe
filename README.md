@@ -38,8 +38,9 @@ The repository now contains a CPU-capable research prototype with:
 
 - A seeded Gymnasium lifecycle environment for an accepted freeway-merge agreement
 - Physical moving-gap and lane-transition geometry with stabilized merge completion
-- Prototype disturbance and communication signals; real cut-in motion and delayed received-state delivery remain pending
-- Continue, cancel, and provisional timing revisions; next-gap/order-swap remain disabled until physical candidates exist
+- Timestamped delayed/lossy state delivery, received caches, and cancellation retries/acknowledgments/timeouts
+- Prototype physical disturbances; real cut-in motion, bounded braking and physical intent mismatch remain pending
+- Continue/cancel; all renegotiation actions remain disabled until physical candidates and acceptance exist
 - One-shot, rule-cancellation, and heuristic-renegotiation baselines
 - A deterministic feasibility checker and safety shield
 - PPO training, paired evaluation, analysis, and worker-benchmark scripts
@@ -49,6 +50,10 @@ The custom environment is optimized for rapid agreement-management experiments. 
 `merge-v1` remains the visual/reference simulator and can be used for later cross-validation.
 
 Step 3A's bounded geometry fixtures pass; see [the implementation and preview instructions](docs/STEP3A_PHYSICAL_MERGE.md).
+Step 3B's [communication and 35-feature shared input contract](docs/STEP3B_COMMUNICATION.md)
+passes its fixtures; old 22-feature models/normalizers are incompatible. Run
+`python scripts/trace_communication.py --delay-ms 800 --loss 0` to inspect messages
+and received state. The current suite has 82 passing tests.
 The full simulator-validation gate remains open. Do not interpret current runs
 as final baseline results or reuse pre-Step-3A checkpoints without revalidation.
 

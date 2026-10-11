@@ -7,6 +7,11 @@ On October 10, Step 3A geometry/completion repairs were implemented and checked;
 see [STEP3A_PHYSICAL_MERGE.md](STEP3A_PHYSICAL_MERGE.md) for current behavior.
 The full M2 gate remains open; do not treat all findings below as resolved.
 
+Step 3B additionally implemented abstract delivery/cache, cancellation and shared
+manager inputs; see [STEP3B_COMMUNICATION.md](STEP3B_COMMUNICATION.md). The original
+age-scalar finding is historical; physical disturbances, rewards and full event
+metrics remain unresolved.
+
 ## Decision
 
 The CPU-only audit is complete. **M2 scientific validation has NOT passed.**
