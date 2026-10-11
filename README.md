@@ -21,13 +21,25 @@ The minimum viable system will use `highway-env` or SUMO to simulate a freeway o
 
 https://github.com/JoaoLucasVeras/ReNe
 
+## Project progress and next steps
+
+Read [the project explained and its roadmap](docs/PROJECT_OVERVIEW_AND_ROADMAP.md)
+for a plain-language introduction, completed work and the path to completion.
+
+Start with the [project progress and decision log](docs/PROJECT_LOG.md) for completed
+work, decisions, open issues and the next session's handoff. Use the
+[roadmap and TODO tracker](docs/PROJECT_ROADMAP.md) for detailed milestone checklists.
+The [simulator audit](docs/SIMULATION_AND_METRIC_DEFINITIONS.md) identifies corrections
+required before research comparisons; the prototype has not passed that validation gate.
+
 ## Implementation status
 
 The repository now contains a CPU-capable research prototype with:
 
 - A seeded Gymnasium lifecycle environment for an accepted freeway-merge agreement
-- Post-acceptance cut-in, braking, intent-mismatch, latency, and packet-loss disturbances
-- Continue, cancel, and bounded renegotiation actions
+- Physical moving-gap and lane-transition geometry with stabilized merge completion
+- Prototype disturbance and communication signals; real cut-in motion and delayed received-state delivery remain pending
+- Continue, cancel, and provisional timing revisions; next-gap/order-swap remain disabled until physical candidates exist
 - One-shot, rule-cancellation, and heuristic-renegotiation baselines
 - A deterministic feasibility checker and safety shield
 - PPO training, paired evaluation, analysis, and worker-benchmark scripts
@@ -35,6 +47,10 @@ The repository now contains a CPU-capable research prototype with:
 
 The custom environment is optimized for rapid agreement-management experiments. HighwayEnv's
 `merge-v1` remains the visual/reference simulator and can be used for later cross-validation.
+
+Step 3A's bounded geometry fixtures pass; see [the implementation and preview instructions](docs/STEP3A_PHYSICAL_MERGE.md).
+The full simulator-validation gate remains open. Do not interpret current runs
+as final baseline results or reuse pre-Step-3A checkpoints without revalidation.
 
 ## Local setup
 

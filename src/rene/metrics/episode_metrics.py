@@ -10,6 +10,7 @@ class EpisodeMetrics:
     episode_id: str
     seed: int
     manager: str = "external"
+    physics_version: str = "step3a-axis-aligned-v1"
     collision: bool = False
     near_collision: bool = False
     completed_merge: bool = False
@@ -20,8 +21,8 @@ class EpisodeMetrics:
     renegotiation_successes: int = 0
     shield_overrides: int = 0
     message_count: int = 0
-    min_ttc_s: float = 999.0
-    min_headway_s: float = 999.0
+    min_ttc_s: float = float("inf")
+    min_headway_s: float = float("inf")
     merge_completion_time_s: float = 0.0
     peak_abs_accel_mps2: float = 0.0
     peak_abs_jerk_mps3: float = 0.0

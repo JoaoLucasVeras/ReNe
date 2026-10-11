@@ -1,8 +1,12 @@
 # ReNe Project Roadmap and TODO Tracker
 
-Last updated: October 1, 2026
+Last updated: October 10, 2026
 
 Source plan: [REVISED_PROJECT_PLAN.md](REVISED_PROJECT_PLAN.md)
+
+Session history and handoff: [PROJECT_LOG.md](PROJECT_LOG.md)
+
+Plain-language explanation and phase summary: [PROJECT_OVERVIEW_AND_ROADMAP.md](PROJECT_OVERVIEW_AND_ROADMAP.md)
 
 ## Goal
 
@@ -12,25 +16,36 @@ Determine when learned post-acceptance agreement management improves V2X coopera
 
 - Check an item only after its acceptance evidence exists.
 - Record the configuration, test output, artifact path, or commit supporting completion.
-- Update the current focus and progress log at the end of each work session.
+- Update the current focus and append a session entry to [PROJECT_LOG.md](PROJECT_LOG.md) at the end of each work session. That file owns the continuing history; the short log below preserves the original milestone record.
 - Mark blocked items with a reason and the next action needed; continue independent tasks.
 - Existing prototype code is a starting point, not evidence that a research milestone has passed.
 - Keep final test results separate from tuning. A change after the final freeze requires a new experiment version.
 
 ## Current focus
 
-**Current laptop focus: Step 3 / M2 simulator and metric audit. Desktop M0 remains pending.**
+**Current laptop focus: Step 3B / M2 communication and information contract. Desktop M0 remains pending.**
 
-Step 1 selected the cancellation source in [BASELINE_PAPER_SELECTION.md](BASELINE_PAPER_SELECTION.md). Step 2 produced [BASELINE_REPRODUCTION_SPEC.md](BASELINE_REPRODUCTION_SPEC.md), with source traceability, explicitly adapted merge rules, reference tests, and confirmed code gaps. Instructor acceptance of the adaptation remains pending. Next, audit the simulator and metrics before implementing the baseline. Desktop setup, runtime validation, matched renegotiation, and final statistical analysis remain pending.
+Steps 1 and 2 documented the cancellation source and reproduction specification.
+The October 1 audit in [SIMULATION_AND_METRIC_DEFINITIONS.md](SIMULATION_AND_METRIC_DEFINITIONS.md)
+found geometry, communication and metric blockers. Instructor acceptance of the
+adaptation, desktop setup, matched renegotiation and final statistical analysis
+remain pending.
+
+October 10 update: [Step 3A](STEP3A_PHYSICAL_MERGE.md) implemented moving-gap body
+geometry, bounded lateral merging, swept collision checks, pairwise safety and
+stabilized completion. 35 tests and lint pass; 90 undisturbed diagnostic episodes
+complete without collisions. The custom simulator remains primary. Next is 3B;
+physical disturbances/candidates, metric accounting and full M2 validation remain open.
 
 ### Next work session
 
-- [ ] Confirm current repository state and review any changes since the prototype.
+- [x] Confirm current repository state and review any changes since the prototype; Step 3 audited commit `ce7d47c`.
 - [ ] Install and verify the desktop environment.
 - [ ] Run tests, smoke evaluation, and a short rule-based episode.
 - [x] Shortlist cancellation papers and identify the selected source's actual trigger; see `docs/BASELINE_PAPER_SELECTION.md`.
 - [x] Write the source-to-simulator reproduction specification, including the lane-change-to-merge adaptation; see `docs/BASELINE_REPRODUCTION_SPEC.md`.
-- [ ] Audit simulator dynamics, V2X observations, and metric definitions before extensive training.
+- [x] Audit simulator dynamics, V2X observations, and metric definitions before extensive training; findings in `docs/SIMULATION_AND_METRIC_DEFINITIONS.md`.
+- [ ] Resolve Step 3A–3E blockers and pass M2 before baseline experiments or PPO training.
 
 ## Milestone map
 
@@ -85,28 +100,28 @@ Step 1 selected the cancellation source in [BASELINE_PAPER_SELECTION.md](BASELIN
 
 ### Dynamics and agreement lifecycle
 
-- [ ] Inspect the actual custom environment rather than treating the planned architecture as implemented behavior.
+- [x] Inspect the actual custom environment rather than treating the planned architecture as implemented behavior; it is not integrated HighwayEnv.
 - [ ] Verify initial acceptance, legal transitions, completion, cancellation, and fallback behavior.
-- [ ] Confirm cancellation does not automatically imply merge failure; document the fallback controller and termination behavior.
-- [ ] Check longitudinal motion, gap calculation, TTC/headway, merge timing, and collision geometry against hand-worked examples.
+- [x] Confirm cancellation does not automatically imply merge failure; fallback targets 18 m/s, but recorded completion is only position crossing (A02).
+- [x] Check longitudinal motion, gap calculation, TTC/headway, merge timing, and collision geometry against hand-worked Step 3A fixtures; disturbed/general scenario validation remains open.
 - [ ] Confirm disturbances begin after agreement acceptance and have plausible effects.
 - [ ] Verify traffic density and severity parameters actually change the scenario as advertised.
 - [ ] Check every renegotiation action changes a meaningful plan variable and physical outcome.
-- [ ] Run and inspect no-disturbance, cut-in, braking, and intent-mismatch episodes.
+- [x] Run and inspect no-disturbance, cut-in, braking, and intent-mismatch episodes; seed-42 diagnostic traces generated by `scripts/audit_simulator.py`, not scientific validation.
 
 ### V2X abstraction
 
-- [ ] Trace how delay, loss, message age, and communicated intent are generated and used.
+- [x] Trace how delay, loss, message age, and communicated intent are generated and used; current scalar proxy does not delay state observations (A04).
 - [ ] Ensure delayed/lost messages affect received information or declared protocol behavior, not only an unrelated scalar feature.
 - [ ] Distinguish sensor observations, received V2X data, and privileged simulator ground truth.
 - [ ] Ensure no manager receives unacknowledged future state or perfect communicated intent.
-- [ ] Document whether message delivery is modeled explicitly or through an approximation.
+- [x] Document whether message delivery is modeled explicitly or through an approximation; no delivery queue or received cache exists yet.
 - [ ] Validate zero-delay/zero-loss and stale/lost-message examples with deterministic traces.
-- [ ] State the abstraction limits: no full wireless stack or propagation model is implied.
+- [x] State the abstraction limits: no full wireless stack, propagation model, or actual delayed-state delivery is currently implemented.
 
 ### Metrics and shield
 
-- [ ] Write precise definitions and denominators for all primary metrics.
+- [x] Write precise definitions and denominators for all primary metrics; proposed contract in the Step 3 audit, implementation and threshold freezing still pending.
 - [ ] Implement/check agreement invalidation persistence and failed-agreement duration.
 - [ ] Verify unnecessary cancellation against a declared look-ahead oracle; avoid labeling it solely from the state at episode termination.
 - [ ] Separate counter-proposal feasibility, acceptance, and completed-merge success.
@@ -114,7 +129,7 @@ Step 1 selected the cancellation source in [BASELINE_PAPER_SELECTION.md](BASELIN
 - [ ] Define TTC/headway applicability and sentinel handling for non-closing vehicles.
 - [ ] Validate collision, near-collision, messages, acceleration, jerk, and shield counts with hand-calculated cases.
 - [ ] Log requested actions and applied actions separately, including override reasons.
-- [ ] Check whether the shield cancels every invalid agreement immediately, leaving no measurable opportunity for a manager to improve detection latency.
+- [x] Check whether the shield cancels every invalid agreement immediately, leaving no measurable opportunity for a manager to improve detection latency; unsafe CONTINUE is overridden at the decision boundary (A07), not continuous protection.
 - [ ] If that occurs, revise the metric/question or justify predictive monitoring opportunities without weakening safety merely to make PPO look useful.
 
 **Artifacts:** scenario traces, unit/scenario tests, and `docs/SIMULATION_AND_METRIC_DEFINITIONS.md`.
@@ -259,6 +274,8 @@ Step 1 selected the cancellation source in [BASELINE_PAPER_SELECTION.md](BASELIN
 
 ## Working artifact index
 
+- Physical geometry implementation and checks: [STEP3A_PHYSICAL_MERGE.md](STEP3A_PHYSICAL_MERGE.md)
+
 Existing entry points (confirm current behavior during M0):
 
 - Revised goal: `docs/REVISED_PROJECT_PLAN.md`
@@ -311,11 +328,15 @@ A block may span multiple sessions. Preserve baseline fairness, metric validity,
 
 ## Work-session progress log
 
+The entries below are the original milestone summary. New detailed session
+entries and current handoffs belong in [PROJECT_LOG.md](PROJECT_LOG.md).
+
 | Date | Tasks/IDs completed | Evidence/artifact | Finding or blocker | Next action |
 |---|---|---|---|---|
 | 2026-10-01 | Roadmap drafted | This document | Desktop/research gates remain to be verified | Start M0; select source under M1 |
 | 2026-10-01 | Step 1 paper selection | `docs/BASELINE_PAPER_SELECTION.md` | Selected a 2026 cancellation source; maneuver adaptation still needs specification | Step 2: reproduction specification |
 | 2026-10-01 | Step 2 specification and related-work check | `docs/BASELINE_REPRODUCTION_SPEC.md`, `docs/RELATED_WORK_OVERLAP_CHECK.md` | Source and adapted rules separated; communication, geometry, and metric gaps confirmed by inspection | Step 3 / M2 audit; obtain instructor guidance on reproduction scope |
+| 2026-10-01 | Step 3 CPU-only audit; prior research docs pushed as `ce7d47c` | `docs/SIMULATION_AND_METRIC_DEFINITIONS.md`, `scripts/audit_simulator.py`; 7 tests and lint pass | M2 gate NOT passed: physical merge geometry, received V2X information, and metric accounting need repairs | Step 3A physical scenario contract; then 3B–3E before M3 |
 
 ## Project completion checklist
 

@@ -5,7 +5,13 @@ environment:
   merge_point_m: 200.0
   ramp_end_m: 240.0
   desired_speed_mps: 25.0
-  initial_gap_m: 30.0
+  initial_gap_m: 60.0
+  vehicle_length_m: 4.5
+  vehicle_width_m: 1.8
+  lane_width_m: 3.6
+  merge_start_m: 140.0
+  lane_change_duration_s: 2.0
+  merge_stabilization_s: 1.0
   min_gap_m: 12.0
   min_ttc_s: 2.0
   min_headway_s: 0.8
