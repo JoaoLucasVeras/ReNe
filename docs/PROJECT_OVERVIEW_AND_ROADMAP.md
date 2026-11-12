@@ -109,11 +109,23 @@ October 10 update: [Step 3A is implemented](STEP3A_PHYSICAL_MERGE.md) and checke
 against bounded physical fixtures. 35 tests pass; the full validation gate is
 still open. Step 3B now adds real message delivery/cache and cancellation handling;
 see [the communication record](STEP3B_COMMUNICATION.md). The next implementation
-task is Step 3C; 82 software tests currently pass.
+task after the October session was physical intent mismatch. [Step 3C1](STEP3C1_BOUNDED_BRAKING.md)
+adds gradual braking, holding and recovery with correctly timestamped speed reports.
+[Step 3C2](STEP3C2_PHYSICAL_CUT_IN.md) adds an actual cut-in car and idealized local
+perception shared by all managers.
+
+November 12: intent mismatch, shared predictions, timing proposals/execution and
+provisional paper-adapted/matched heuristic managers are implemented. 200 tests and
+lint pass. Input v4 has 53 features; older checkpoints are incompatible. The initial
+51 ramp failures were followed by common-controller repairs; post-repair pilots
+of 144/384/96 episodes have no collisions or ramp departures in tested cases.
+CPU training/checkpoint reload works. Broader scientific review is separate; next
+is protocol/baseline review and desktop benchmarking. See [the CPU handoff](CPU_TO_TRAINING_HANDOFF.md).
 
 The phases below summarize the detailed [TODO tracker](PROJECT_ROADMAP.md).
 Check them only when their completion evidence exists. No fixed calendar dates
-are assigned because the semester deadline and repair effort are not yet established.
+are guaranteed. The student confirmed an early-December deadline; target periods
+and current technical blockers are recorded in the CPU handoff.
 
 ### Phase 1 make the simulation trustworthy
 
@@ -189,10 +201,11 @@ correctly. Beating the rules is an experimental outcome, not an implementation r
 
 ## What exactly should we do next?
 
-**Review Step 3A/3B results, then scope Step 3C.** Define actual cut-in/braking
-motion and how feasible revised plans are proposed, accepted and physically
-executed. Communication is now meaningful, but disturbances and metrics still
-need validation before the baseline comparison.
+**Next: review and freeze the protocol, then benchmark training on the desktop.**
+Shared controller/fallback repairs and the tested CPU pipeline are implemented.
+Read the declared model/measurement limitations before substantive PPO. Scope approval
+is resolved; GPU acceleration is optional, not a simulation requirement. Follow
+the ordered CPU handoff checklist and experiment protocol.
 
 The overview was initially created as documentation only. The subsequent approved
 Step 3A implementation is recorded separately; no PPO training, commit or push

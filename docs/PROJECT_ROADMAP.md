@@ -1,6 +1,6 @@
 # ReNe Project Roadmap and TODO Tracker
 
-Last updated: October 10, 2026
+Last updated: November 12, 2026
 
 Source plan: [REVISED_PROJECT_PLAN.md](REVISED_PROJECT_PLAN.md)
 
@@ -23,13 +23,14 @@ Determine when learned post-acceptance agreement management improves V2X coopera
 
 ## Current focus
 
-**Current laptop focus: Step 3C / M2 physical disturbances and candidate execution. Desktop M0 remains pending.**
+**Current focus: CPU-to-desktop training handoff and protocol/baseline review.
+Bounded engineering checks pass; broader scientific freeze and desktop M0 remain open.**
 
 Steps 1 and 2 documented the cancellation source and reproduction specification.
 The October 1 audit in [SIMULATION_AND_METRIC_DEFINITIONS.md](SIMULATION_AND_METRIC_DEFINITIONS.md)
-found geometry, communication and metric blockers. Instructor acceptance of the
-adaptation, desktop setup, matched renegotiation and final statistical analysis
-remain pending.
+found geometry, communication and metric blockers. Instructor approval was confirmed
+November 12; deadline is early December. Desktop setup, scientific baseline freeze
+and final statistical analysis remain pending.
 
 October 10 update: [Step 3A](STEP3A_PHYSICAL_MERGE.md) implemented moving-gap body
 geometry, bounded lateral merging, swept collision checks, pairwise safety and
@@ -42,6 +43,36 @@ received estimates and a 35-feature shared policy contract are implemented.
 Cancellation now has retries, peer receipts, acknowledgments and timeout.
 82 tests and lint pass. All renegotiation actions await physical candidates and
 acceptance in Step 3C; M2 is still open.
+
+Step 3C1 update: [bounded braking](STEP3C1_BOUNDED_BRAKING.md) now changes the front
+car's physical trajectory and timestamped beacons, with finite braking/hold/recovery.
+104 tests pass. Step 3B was pushed as `2be2ee2`; this new slice is local only.
+
+Step 3C2 update: [physical cut-in](STEP3C2_PHYSICAL_CUT_IN.md), all-body collision/
+safety metrics and shared ideal local perception are implemented. Input contract
+now has 40 features (v2); older models are incompatible. 134 tests and lint pass;
+the standard 10-episode smoke workflow runs. Shared stopping safeguards were also
+repaired. Step 3C1/3C2 remain local only; next slice is physical intent mismatch.
+
+### Small Step 3C slices
+
+- [x] 3C1: bounded braking, generation-time beacon sampling, tests and visual preview.
+- [x] 3C2: physical cut-in vehicle, collision/body coverage and shared local perception.
+- [x] 3C3: physical intent mismatch and received plan/state residual fixtures.
+- [x] 3C4: shared bounded timing candidates using received-state predictions.
+- [x] 3C5: ego-timing reservation replies, rejection and expiry.
+- [x] 3C6: accepted timing activation/execution and repaired abort/fallback fixtures.
+
+November 12: 200 tests and lint pass; input v4 has 53 features. The initial pilot
+found 51 ramp failures. Work continued with shared stopping/fallback and rear-following
+repairs. Post-repair pilots of 144/384/96 episodes show no collisions/ramp departures
+in tested cases. Offline counterfactuals, mixed training scenarios, paired manifests
+and uncertainty helpers are implemented. CPU subprocess train/save/reload smokes
+pass. Next: review/freeze limitations and benchmark the desktop. See
+[CPU_TO_TRAINING_HANDOFF.md](CPU_TO_TRAINING_HANDOFF.md).
+
+Keep unsupported revisions disabled. M2 remains open; rear traffic response,
+metric accounting and wider scenario validation still need review.
 
 ### Next work session
 
@@ -96,9 +127,10 @@ acceptance in Step 3C; M2 is still open.
 - [x] Map required inputs to existing fields or documented implementation gaps; new inputs are not yet implemented.
 - [x] Document component reproduction, merge adaptations, and unavailable components separately.
 - [x] Define expected behavior for hand-worked reference examples.
-- [ ] Seek instructor guidance if adapting the source substantially changes its method.
+- [x] Seek instructor guidance on the adaptation; approval confirmed November 12.
 
-**Artifact:** `docs/BASELINE_REPRODUCTION_SPEC.md` (created; implementation and instructor-guidance gates remain open).
+**Artifact:** `docs/BASELINE_REPRODUCTION_SPEC.md` (scope approved; components implemented;
+scientific validation and freeze remain open).
 
 **Gate:** every baseline decision rule traces to the selected source or an explicitly justified adaptation. No invented baseline is labeled a paper reproduction.
 
@@ -128,13 +160,13 @@ acceptance in Step 3C; M2 is still open.
 ### Metrics and shield
 
 - [x] Write precise definitions and denominators for all primary metrics; proposed contract in the Step 3 audit, implementation and threshold freezing still pending.
-- [ ] Implement/check agreement invalidation persistence and failed-agreement duration.
-- [ ] Verify unnecessary cancellation against a declared look-ahead oracle; avoid labeling it solely from the state at episode termination.
+- [x] Implement/check active invalidity accumulation and persistence; core fixtures pass November 12.
+- [x] Implement/test offline decision-time hold-CONTINUE oracle; pending proposals stay unlabelled, and the convention must be reported.
 - [ ] Separate counter-proposal feasibility, acceptance, and completed-merge success.
 - [ ] Define whether merge time is reported only for successful merges; report failures separately to avoid misleading averages.
 - [ ] Define TTC/headway applicability and sentinel handling for non-closing vehicles.
 - [ ] Validate collision, near-collision, messages, acceleration, jerk, and shield counts with hand-calculated cases.
-- [ ] Log requested actions and applied actions separately, including override reasons.
+- [x] Log requested/applied actions and shield reasons; fingerprint development sources.
 - [x] Check whether the shield cancels every invalid agreement immediately, leaving no measurable opportunity for a manager to improve detection latency; unsafe CONTINUE is overridden at the decision boundary (A07), not continuous protection.
 - [ ] If that occurs, revise the metric/question or justify predictive monitoring opportunities without weakening safety merely to make PPO look useful.
 

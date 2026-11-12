@@ -4,7 +4,9 @@ Version: 0.1 — implementation specification; final experiment parameters are n
 
 Date: October 1, 2026
 
-Status: Step 2 document complete. Baseline implementation, simulator validation, and instructor acceptance of the maneuver adaptation remain pending.
+Status updated November 12, 2026: the student confirms instructor approval of the
+maneuver adaptation. Reference predicate and merge-adapted decision components are
+implemented; simulator/scientific validation and baseline freeze remain pending.
 
 Related documents: [Paper selection](BASELINE_PAPER_SELECTION.md), [overlap check](RELATED_WORK_OVERLAP_CHECK.md), [roadmap](PROJECT_ROADMAP.md).
 
@@ -245,7 +247,7 @@ Suggested new modules: `policies/literature_cancellation.py`, `agreements/cancel
 - [x] Reference examples and expected results defined.
 - [x] Current simulator gaps mapped to required work.
 - [ ] Optional-lane-change operationalization accepted as sufficiently faithful, or refined with source clarification.
-- [ ] Instructor confirms whether the merge adaptation meets the requested reproduction scope.
+- [x] Instructor confirms whether the merge adaptation meets the requested reproduction scope; student confirmation November 12, 2026.
 - [ ] M2 dynamics, communication, and metric requirements pass.
 - [ ] Reference and adapted implementations pass automated and scenario tests.
 - [ ] Baseline pilot report reviewed and final parameters frozen.

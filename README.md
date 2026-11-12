@@ -39,9 +39,9 @@ The repository now contains a CPU-capable research prototype with:
 - A seeded Gymnasium lifecycle environment for an accepted freeway-merge agreement
 - Physical moving-gap and lane-transition geometry with stabilized merge completion
 - Timestamped delayed/lossy state delivery, received caches, and cancellation retries/acknowledgments/timeouts
-- Prototype physical disturbances; real cut-in motion, bounded braking and physical intent mismatch remain pending
-- Continue/cancel; all renegotiation actions remain disabled until physical candidates and acceptance exist
-- One-shot, rule-cancellation, and heuristic-renegotiation baselines
+- Bounded braking, physical cut-in and physical intent mismatch with received-only residual evidence
+- Continue/cancel and acknowledged earlier/later timing revisions; next-gap/order-swap remain disabled
+- Shared received-state predictions, provisional paper-adapted cancellation and matched timing heuristic
 - A deterministic feasibility checker and safety shield
 - PPO training, paired evaluation, analysis, and worker-benchmark scripts
 - Automated lifecycle, feasibility, safety, environment, and reproducibility tests
@@ -53,7 +53,18 @@ Step 3A's bounded geometry fixtures pass; see [the implementation and preview in
 Step 3B's [communication and 35-feature shared input contract](docs/STEP3B_COMMUNICATION.md)
 passes its fixtures; old 22-feature models/normalizers are incompatible. Run
 `python scripts/trace_communication.py --delay-ms 800 --loss 0` to inspect messages
-and received state. The current suite has 82 passing tests.
+and received state. Step 3C1 adds [bounded braking and its checks](docs/STEP3C1_BOUNDED_BRAKING.md);
+Step 3C2 adds a [physical cut-in and a 40-feature shared contract](docs/STEP3C2_PHYSICAL_CUT_IN.md).
+The November 12 [CPU integration and handoff](docs/CPU_TO_TRAINING_HANDOFF.md) adds
+53-feature input v4, timing proposals/execution and core metric repairs. Older
+checkpoints/normalizers are incompatible. The current suite has 200 passing tests.
+The initial pilot's ramp failures prompted shared controller/rear-following repairs.
+Post-repair pilots of 144/384/96 episodes have no collisions/ramp departures in tested
+cases. Offline cancellation counterfactuals and paired analysis are implemented.
+CPU subprocess training/save/reload smokes pass; none is a final research result.
+Review [the experiment protocol](docs/EXPERIMENT_PROTOCOL.md) before substantive PPO.
+Tests, rule-based episodes and previews
+execute on the local CPU, without a GPU. Synthetic scenarios are not real-world validation.
 The full simulator-validation gate remains open. Do not interpret current runs
 as final baseline results or reuse pre-Step-3A checkpoints without revalidation.
 
@@ -68,6 +79,9 @@ python -m pip install -e ".[dev]"
 ```
 
 The default PPO configuration uses CPU and does not require an NVIDIA GPU.
+Substantive training is gated while M2 remains open. Use
+`python scripts/training_preflight.py` for the 128-step CPU interface smoke;
+the development override in `train.py` does not validate the simulator.
 
 ## Verify the project
 
