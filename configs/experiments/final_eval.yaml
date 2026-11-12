@@ -1,6 +1,6 @@
 experiment:
-  episodes: 1000
+  episodes: 1920
   seeds: [1001, 1002, 1003, 1004, 1005]
-  managers: [perception_only, one_shot, rule_cancel, heuristic_renegotiate, learned]
+  managers: [one_shot, rule_cancel, paper_cancel_merge_adapted, matched_heuristic, learned]
   output_dir: results/raw/final
 env_config: configs/env/evaluation.yaml

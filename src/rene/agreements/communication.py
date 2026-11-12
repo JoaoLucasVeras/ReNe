@@ -249,6 +249,7 @@ class CommunicationModel:
         self._beacon_index = 1
         self.time_s = 0.0
         self.cache: dict[str, Message] = {}
+        self.revision_session = None
 
     def bootstrap(self, payloads: dict[str, dict]):
         """Assumed last received states at acceptance, not simulated negotiation."""
@@ -267,6 +268,12 @@ class CommunicationModel:
         self.bus.log("accepted_fixture_initialized", 0.0)
 
     def receive(self, message: Message):
+        if (
+            message.kind in {"timing_proposal", "timing_reply"}
+            and self.revision_session is not None
+        ):
+            self.revision_session.receive(message)
+            return
         if message.kind != "beacon":
             self.session.receive(message)
             return
@@ -303,6 +310,8 @@ class CommunicationModel:
                 self._beacon_index * self.beacon_interval_s,
                 self.session.next_retry_s,
                 self.session.deadline_s,
+                self.revision_session.next_retry_s if self.revision_session else inf,
+                self.revision_session.deadline_s if self.revision_session else inf,
             )
             if at > until_s + 1e-9:
                 break
@@ -312,6 +321,8 @@ class CommunicationModel:
                 for message in self.bus.receive_due(at):
                     self.receive(message)
             self.session.tick(at)
+            if self.revision_session:
+                self.revision_session.tick(at)
             if self._beacon_index * self.beacon_interval_s <= at + 1e-9:
                 payloads = sample(at)
                 for peer in PEERS:

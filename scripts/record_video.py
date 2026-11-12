@@ -20,6 +20,7 @@ def main() -> None:
     parser.add_argument("--disturbance", default="cut_in")
     parser.add_argument("--delay-ms", type=float, default=100)
     parser.add_argument("--loss", type=float, default=0.05)
+    parser.add_argument("--contact-sheet", help="Optional PNG of sampled frames for visual QA")
     parser.add_argument(
         "--frame-ms",
         type=int,
@@ -50,8 +51,21 @@ def main() -> None:
         )
         drawing.text(
             (8, 25),
-            "Orange: merging car | Blue: freeway cars | "
-            "Custom Step 3B prototype, not full validation",
+            "Orange: ego | Blue: peers | Purple: unconnected cut-in | "
+            "Custom prototype, not full validation",
+            fill=(20, 20, 20),
+        )
+        drawing.text(
+            (8, 76),
+            f"Front speed: actual={env.unwrapped.front_speed_mps:.1f} m/s | "
+            f"last received={info['manager_inputs']['front_speed_mps']:.1f} m/s",
+            fill=(20, 20, 20),
+        )
+        drawing.text(
+            (8, 93),
+            f"Intent dv={info['manager_inputs']['front_intent_speed_error_mps']:.1f} m/s | "
+            f"proposal={env.unwrapped.revision_session.state} | "
+            f"ramp failure={env.unwrapped.ramp_end_violation}",
             fill=(20, 20, 20),
         )
         drawing.text(
@@ -60,7 +74,9 @@ def main() -> None:
         drawing.text(
             (8, 59),
             f"V2X age={info['manager_inputs']['message_age_s']:.2f}s  "
-            f"cancel={info['cancel_protocol_state']}",
+            f"cancel={info['cancel_protocol_state']}  "
+            f"sensor={info['manager_inputs']['intruder_detected'] > 0.5}  "
+            f"occupied={info['manager_inputs']['slot_occupied'] > 0.5}",
             fill=(20, 20, 20),
         )
         return picture
@@ -76,6 +92,15 @@ def main() -> None:
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     frames[0].save(output, save_all=True, append_images=frames[1:], duration=args.frame_ms, loop=0)
+    if args.contact_sheet:
+        sheet = Image.new("RGB", (frames[0].width * 2, frames[0].height * 4), "white")
+        for index in range(8):
+            sample = frames[round(index * (len(frames) - 1) / 7)]
+            sheet.paste(sample, ((index % 2) * sample.width, (index // 2) * sample.height))
+        sheet_path = Path(args.contact_sheet)
+        sheet_path.parent.mkdir(parents=True, exist_ok=True)
+        sheet.save(sheet_path)
+        print(sheet_path.resolve())
     print(output.resolve())
 
 

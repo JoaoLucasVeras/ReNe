@@ -1,0 +1,5 @@
+experiment:
+  episodes: 4
+  seeds: [9002]
+  output_dir: results/raw/development-evaluation-smoke
+env_config: configs/env/evaluation.yaml

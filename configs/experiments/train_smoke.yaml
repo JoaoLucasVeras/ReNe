@@ -1,0 +1,10 @@
+experiment:
+  total_timesteps: 128
+  n_envs: 2
+  sample_scenarios: true
+  vec_backend: subproc
+  torch_threads: 1
+  seed: 9001
+  output_dir: results/raw/development-training-smoke-20261112
+env_config: configs/env/default.yaml
+agent_config: configs/agents/ppo_smoke.yaml

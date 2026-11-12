@@ -33,6 +33,7 @@ class RuleCancelManager:
             min(values["front_clearance_m"], values["rear_clearance_m"]) < self.min_gap_m
             or values["ttc_s"] < self.min_ttc_s
             or values["message_age_s"] > self.max_message_age_s
+            or values["slot_occupied"] > 0.5
         ):
             return ManagerAction.CANCEL
         return ManagerAction.CONTINUE
@@ -51,6 +52,10 @@ class HeuristicRenegotiationManager(RuleCancelManager):
 
 
 def make_manager(name: str) -> Manager:
+    if name in {"paper_cancel_merge_adapted", "matched_heuristic"}:
+        from rene.policies.literature_cancellation import MatchedHeuristic, PaperCancelMergeAdapted
+
+        return MatchedHeuristic() if name == "matched_heuristic" else PaperCancelMergeAdapted()
     if name in {"perception_only", "one_shot"}:
         return OneShotManager()
     if name == "rule_cancel":

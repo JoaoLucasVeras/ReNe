@@ -1,6 +1,9 @@
 experiment:
   total_timesteps: 100000
   n_envs: 4
+  sample_scenarios: true
+  vec_backend: subproc
+  torch_threads: 1
   seed: 1
   output_dir: models/ppo_default
 env_config: configs/env/default.yaml

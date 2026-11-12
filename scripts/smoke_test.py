@@ -10,6 +10,7 @@ import rene  # noqa: F401
 from rene.policies.rule_based import make_manager
 from rene.utils.configuration import load_yaml
 from rene.utils.logging import make_run_dir, save_rows
+from rene.utils.provenance import source_fingerprint
 
 
 def flatten_env_config(config: dict) -> dict:
@@ -38,6 +39,7 @@ def main() -> None:
     output = make_run_dir(settings["output_dir"], settings["manager"])
     episode_rows: list[dict] = []
     decision_rows: list[dict] = []
+    fingerprint = source_fingerprint()
 
     env = gym.make("ReNeMergeLifecycle-v0", config=flatten_env_config(env_source))
     for index in range(int(settings["episodes"])):
@@ -50,6 +52,7 @@ def main() -> None:
             done = terminated or truncated
         metrics = dict(info["episode_metrics"])
         metrics["manager"] = settings["manager"]
+        metrics["source_fingerprint"] = fingerprint
         episode_rows.append(metrics)
         for row in info["decision_log"]:
             decision_rows.append({"episode_id": metrics["episode_id"], **row})

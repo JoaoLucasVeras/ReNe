@@ -16,10 +16,13 @@ import numpy as np
 from gymnasium import spaces
 
 from rene.agreements.communication import PEERS, CommunicationModel
-from rene.agreements.feasibility import evaluate_feasibility
+from rene.agreements.feasibility import FeasibilityResult, evaluate_feasibility
 from rene.agreements.protocol import create_accepted_agreement
+from rene.agreements.revision import RevisionSession
 from rene.agreements.state import AgreementState, ManagerAction
 from rene.disturbances.base import DisturbanceState
+from rene.disturbances.braking import BrakingPulse
+from rene.disturbances.cut_in import CutInTrajectory
 from rene.envs.geometry import (
     VehicleBody,
     bumper_clearance,
@@ -29,6 +32,7 @@ from rene.envs.geometry import (
 )
 from rene.envs.manager_inputs import FEATURES, INPUT_VERSION, decode, encode
 from rene.metrics.episode_metrics import EpisodeMetrics
+from rene.metrics.invalidity import InvalidityLedger
 from rene.safety.shield import ShieldDecision, apply_shield
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -53,11 +57,22 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "invalidation_persistence_s": 0.6,
     "oracle_horizon_s": 3.0,
     "max_renegotiations": 1,
+    "enable_timing_revisions": True,
     "render_width": 800,
     "render_height": 240,
     "disturbance_type": "cut_in",
     "disturbance_trigger_s": 5.0,
     "disturbance_severity": "moderate",
+    "braking_duration_s": 2.0,
+    "braking_hold_s": 1.0,
+    "braking_decel_mps2": 3.0,
+    "front_max_decel_mps2": 4.0,
+    "braking_recovery_mps2": 2.0,
+    "braking_min_speed_mps": 8.0,
+    "intent_decel_mps2": 1.5,
+    "cut_in_duration_s": 2.0,
+    "cut_in_offset_fraction": 0.4,
+    "local_sensor_range_m": 60.0,
     "communication_delay_ms": 100,
     "packet_loss": 0.05,
     "beacon_interval_s": 0.1,
@@ -90,9 +105,23 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
             "min_gap_m",
             "min_ttc_s",
             "min_headway_s",
+            "braking_duration_s",
+            "braking_decel_mps2",
+            "front_max_decel_mps2",
+            "braking_recovery_mps2",
+            "intent_decel_mps2",
+            "cut_in_duration_s",
+            "local_sensor_range_m",
         ):
             if not np.isfinite(self.config[key]) or self.config[key] <= 0:
                 raise ValueError(f"{key} must be finite and positive")
+        for key in ("braking_hold_s", "braking_min_speed_mps"):
+            if not np.isfinite(self.config[key]) or self.config[key] < 0:
+                raise ValueError(f"{key} must be finite and nonnegative")
+        if self.config["braking_min_speed_mps"] > self.config["desired_speed_mps"]:
+            raise ValueError("braking minimum speed must not exceed desired speed")
+        if not 0 < self.config["cut_in_offset_fraction"] < 0.6:
+            raise ValueError("cut-in offset fraction must be between 0 and 0.6")
         if self.config["vehicle_width_m"] >= self.config["lane_width_m"]:
             raise ValueError("vehicle width must be smaller than lane width")
         if (
@@ -147,6 +176,8 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
         center_span = initial_gap + self.config["vehicle_length_m"]
         self.front_x_m = self.ramp_x_m + center_span / 2
         self.front_speed_mps = self.ramp_speed_mps
+        self._front_intent_origin_x_m = self.front_x_m
+        self._front_intent_speed_mps = self.ramp_speed_mps
         self.rear_x_m = self.ramp_x_m - center_span / 2
         self.rear_speed_mps = self.ramp_speed_mps
         self.ramp_y_m = float(self.config["lane_width_m"])
@@ -159,12 +190,15 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
         self.fallback_active = False
         self.completed = False
         self.collision = False
+        self.ramp_end_violation = False
         self._invalid_since_s = None
         self._last_accel = 0.0
         self._intent_position_error_m = 0.0
         self._intent_speed_error_mps = 0.0
         self._intent_inconsistency_count = 0
         self._decision_log = []
+        self._invalidity = InvalidityLedger()
+        self._assessment_cache = None
 
         self.disturbance = DisturbanceState(
             disturbance_type=options.get("disturbance_type", self.config["disturbance_type"]),
@@ -177,6 +211,52 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
             ),
             packet_loss=float(options.get("packet_loss", self.config["packet_loss"])),
         )
+        self.braking_pulse = None
+        self.cut_in_trajectory = None
+        if self.disturbance.disturbance_type == "cut_in":
+            if not np.isfinite(self.disturbance.trigger_s) or self.disturbance.trigger_s < 0:
+                raise ValueError("cut-in trigger must be finite and nonnegative")
+            if self.disturbance.severity not in {"mild", "moderate", "hard"}:
+                raise ValueError("unknown cut-in severity")
+            offset = (
+                center_span
+                / 2
+                * self.config["cut_in_offset_fraction"]
+                / self.disturbance.severity_scale
+            )
+            if offset <= 0 or center_span / 2 - offset <= self.config["vehicle_length_m"]:
+                raise ValueError("cut-in trajectory must fit between the named mainline bodies")
+            self.cut_in_trajectory = CutInTrajectory(
+                self.ramp_x_m + offset,
+                self.ramp_speed_mps,
+                self.disturbance.trigger_s,
+                self.config["cut_in_duration_s"],
+                self.config["lane_width_m"],
+                self.config["vehicle_length_m"],
+                self.config["vehicle_width_m"],
+            )
+        if self.disturbance.disturbance_type in {"braking", "intent_mismatch"}:
+            if not np.isfinite(self.disturbance.trigger_s) or self.disturbance.trigger_s < 0:
+                raise ValueError("braking trigger must be finite and nonnegative")
+            if self.disturbance.severity not in {"mild", "moderate", "hard"}:
+                raise ValueError("unknown braking severity")
+            self.braking_pulse = BrakingPulse(
+                self.disturbance.trigger_s,
+                self.config["braking_duration_s"],
+                self.config["braking_hold_s"],
+                min(
+                    self.config[
+                        "intent_decel_mps2"
+                        if self.disturbance.disturbance_type == "intent_mismatch"
+                        else "braking_decel_mps2"
+                    ]
+                    * self.disturbance.severity_scale,
+                    self.config["front_max_decel_mps2"],
+                ),
+                self.config["braking_recovery_mps2"],
+                self.config["desired_speed_mps"],
+                self.config["braking_min_speed_mps"],
+            )
         planned_time = (self.config["merge_point_m"] - self.ramp_x_m) / self.ramp_speed_mps
         lateral_distance = self.ramp_speed_mps * self.config["lane_change_duration_s"] / 2
         # Allow a full integration-step margin for discrete start-time rounding.
@@ -209,6 +289,9 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
             self.config["cancel_timeout_s"],
         )
         self.communication.bootstrap(self._beacon_payloads())
+        self.revision_session = RevisionSession(self.communication.bus, self.agreement.agreement_id)
+        self.communication.revision_session = self.revision_session
+        self.revision_session.accept_peer = self._peer_timing_admission
         self.agreement.message_count = 0  # Initial negotiation is an assumed fixture.
         observation = self._observation()
         return observation, self._info()
@@ -231,6 +314,36 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
         ego, front, _ = self._bodies()
         return bumper_clearance(ego, front)
 
+    def _traffic_bodies(self) -> tuple[VehicleBody, ...]:
+        bodies = self._bodies()
+        if self.cut_in_trajectory is not None:
+            bodies += (self.cut_in_trajectory.body_at(self.time_s),)
+        return bodies
+
+    def _traffic_speeds(self) -> tuple[float, ...]:
+        speeds = (self.ramp_speed_mps, self.front_speed_mps, self.rear_speed_mps)
+        if self.cut_in_trajectory is not None:
+            speeds += (self.cut_in_trajectory.speed_mps,)
+        return speeds
+
+    def _slot_occupied(self, intruder: VehicleBody | None, rear_x: float, front_x: float) -> bool:
+        """The original named-pair agreement cannot ignore an intervening body."""
+        if intruder is None:
+            return False
+        lane = VehicleBody(intruder.x, 0.0, intruder.length, intruder.width)
+        return lateral_overlap(intruder, lane) and rear_x < intruder.x < front_x
+
+    def _true_slot_occupied(self) -> bool:
+        intruder = self.cut_in_trajectory.body_at(self.time_s) if self.cut_in_trajectory else None
+        return self._slot_occupied(intruder, self.rear_x_m, self.front_x_m)
+
+    def _observed_intruder(self) -> VehicleBody | None:
+        """Ideal, instantaneous local detection; no remembered out-of-range track."""
+        if self.cut_in_trajectory is None:
+            return None
+        body = self.cut_in_trajectory.body_at(self.time_s)
+        return body if abs(body.x - self.ramp_x_m) <= self.config["local_sensor_range_m"] else None
+
     @property
     def rear_clearance_m(self) -> float:
         ego, _, rear = self._bodies()
@@ -242,11 +355,11 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
 
     @property
     def ttc_s(self) -> float:
-        bodies = self._bodies()
-        speeds = (self.ramp_speed_mps, self.front_speed_mps, self.rear_speed_mps)
+        bodies = self._traffic_bodies()
+        speeds = self._traffic_speeds()
         return min(
             longitudinal_ttc(bodies[i], speeds[i], bodies[j], speeds[j])
-            for i, j in combinations(range(3), 2)
+            for i, j in combinations(range(len(bodies)), 2)
         )
 
     @property
@@ -277,10 +390,10 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
     @property
     def actual_headway_s(self) -> float:
         """Minimum headway only among bodies currently sharing lateral space."""
-        bodies = self._bodies()
-        speeds = (self.ramp_speed_mps, self.front_speed_mps, self.rear_speed_mps)
+        bodies = self._traffic_bodies()
+        speeds = self._traffic_speeds()
         values = []
-        for i, j in combinations(range(3), 2):
+        for i, j in combinations(range(len(bodies)), 2):
             if not lateral_overlap(bodies[i], bodies[j]):
                 continue
             follower, leader = (i, j) if bodies[i].x <= bodies[j].x else (j, i)
@@ -292,6 +405,8 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
 
     def _slot_safe_for(self, horizon_s: float) -> bool:
         """Conservative constant-speed entry check; not a formal safety guarantee."""
+        if self._true_slot_occupied():
+            return False
         front_min = min(
             self.front_clearance_m,
             self.front_clearance_m + (self.front_speed_mps - self.ramp_speed_mps) * horizon_s,
@@ -310,7 +425,8 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
 
     def _update_completion(self) -> None:
         # Fully in the target lane, inside the actual named pair, safely stabilized.
-        valid = abs(self.ramp_y_m) < 1e-9 and self._slot_safe_for(0.0)
+        safe = self._fallback_slot_safe() if self.fallback_active else self._slot_safe_for(0.0)
+        valid = abs(self.ramp_y_m) < 1e-9 and safe
         if not valid:
             self._stable_since_s = None
             return
@@ -320,7 +436,57 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
             self.completed = True
             self.physical_merge_time_s = self.time_s
 
+    def _fallback_slot_safe(self):
+        """Perception fallback may stabilize in a real opening, not revive an agreement."""
+        ego = self._bodies()[0]
+        for body, speed in zip(self._traffic_bodies()[1:], self._traffic_speeds()[1:], strict=True):
+            if not lateral_overlap(ego, body):
+                continue
+            clearance = abs(body.x - ego.x) - (body.length + ego.length) / 2
+            follower_speed = self.ramp_speed_mps if ego.x < body.x else speed
+            if clearance < max(
+                self.config["min_gap_m"], self.config["min_headway_s"] * follower_speed
+            ):
+                return False
+            if longitudinal_ttc(ego, self.ramp_speed_mps, body, speed) < self.config["min_ttc_s"]:
+                return False
+        return True
+
+    def _rear_following_accel(self, dt):
+        rear = self._bodies()[2]
+        leaders = [
+            (body, speed)
+            for body, speed in zip(self._traffic_bodies(), self._traffic_speeds(), strict=True)
+            if body.x > rear.x and lateral_overlap(body, rear)
+        ]
+        target = self.config["desired_speed_mps"]
+        cap = float("inf")
+        if leaders:
+            leader, speed = min(leaders, key=lambda item: item[0].x)
+            desired_gap = max(
+                self.config["min_gap_m"], self.config["min_headway_s"] * self.rear_speed_mps
+            )
+            cap = np.sqrt(
+                max(
+                    0.0,
+                    speed**2
+                    + 2
+                    * self.config["max_decel_mps2"]
+                    * (bumper_clearance(rear, leader) - desired_gap),
+                )
+            )
+            target = min(target, cap)
+        return float(
+            np.clip(
+                min((target - self.rear_speed_mps) * 0.5, (cap - self.rear_speed_mps) / dt),
+                -self.config["max_decel_mps2"],
+                self.config["max_accel_mps2"],
+            )
+        )
+
     def _feasibility(self):
+        if self._true_slot_occupied():
+            return FeasibilityResult(False, "target_slot_occupied")
         return evaluate_feasibility(
             gap_m=min(self.front_clearance_m, self.rear_clearance_m),
             ttc_s=self.target_slot_ttc_s,
@@ -335,8 +501,21 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
         )
 
     def _renegotiation_feasible(self, action: ManagerAction) -> bool:
-        # All revisions await a physical acceptance executor in Step 3C.
-        return action.family != "renegotiate"
+        if action.family != "renegotiate":
+            return True
+        if (
+            not self.config["enable_timing_revisions"]
+            or self.agreement.renegotiation_count >= self.config["max_renegotiations"]
+            or self.revision_session.state == "pending"
+            or self.canceled
+        ):
+            return False
+        values = decode(self._observation())
+        field = {
+            ManagerAction.RENEGOTIATE_ADVANCE: "advance_feasible",
+            ManagerAction.RENEGOTIATE_DELAY: "delay_feasible",
+        }.get(action)
+        return field is not None and values[field] > 0.5
 
     def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         requested = ManagerAction(int(action))
@@ -361,12 +540,13 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
         if shield.overridden:
             self.metrics.shield_overrides += 1
 
+        self._interval_sent_before = self.communication.counts()["sent"]
         self._apply_lifecycle_action(applied)
         reward_components = self._simulate_interval()
         reward = float(sum(reward_components.values()))
         self.metrics.total_reward += reward
 
-        terminated = self.completed or self.collision
+        terminated = self.completed or self.collision or self.ramp_end_violation
         truncated = self.time_s >= self.config["duration_s"] - 1e-9 and not terminated
         if truncated and self.agreement.state not in {
             AgreementState.CANCELED,
@@ -407,8 +587,13 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
         }:
             return
         if action == ManagerAction.CANCEL:
-            if self.agreement.state in {AgreementState.ACCEPTED, AgreementState.EXECUTING}:
+            if self.agreement.state in {
+                AgreementState.ACCEPTED,
+                AgreementState.EXECUTING,
+                AgreementState.RENEGOTIATING,
+            }:
                 self.agreement.transition(AgreementState.CANCELED, self.time_s)
+            self.revision_session.abort(self.time_s)
             self.canceled = True
             self.fallback_active = True
             self.metrics.canceled = True
@@ -417,17 +602,57 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
             return
         if action.family != "renegotiate":
             return
-        self.agreement.revise(action, self.time_s)
-        if action == ManagerAction.RENEGOTIATE_DELAY:
-            self.agreement.planned_merge_time_s += 1.0
-        elif action == ManagerAction.RENEGOTIATE_ADVANCE:
-            self.agreement.planned_merge_time_s = max(
-                self.agreement.planned_merge_time_s - 1.0, self.time_s + 0.5
-            )
-        self.agreement.transition(AgreementState.EXECUTING, self.time_s)
+        if not self._renegotiation_feasible(action):
+            return
+        delta = 1.0 if action == ManagerAction.RENEGOTIATE_DELAY else -1.0
+        self.agreement.transition(AgreementState.RENEGOTIATING, self.time_s)
+        self.agreement.renegotiation_count += 1
         self.metrics.renegotiation_attempts += 1
+        self.revision_session.request(
+            self.time_s, self.agreement.revision + 1, self.agreement.planned_merge_time_s + delta
+        )
+        self.communication.advance(self.time_s, lambda at: self._beacon_payloads())
+        self._update_revision()
+
+    def _update_revision(self):
+        session = self.revision_session
+        if self.agreement.state != AgreementState.RENEGOTIATING or session.state == "pending":
+            return
+        if session.state == "accepted":
+            # Safety remains common and truth-based; acceptance is not permission
+            # to execute an unsafe or already-missed physical plan.
+            valid = (
+                not self._lane_change_started
+                and self._feasibility().feasible
+                and session.planned_at_s - self.config["lane_change_duration_s"] / 2 > self.time_s
+            )
+            if valid:
+                self.agreement.planned_merge_time_s = session.planned_at_s
+                self.agreement.revision = session.revision
+                self.communication.session.revision = session.revision
+                self.communication.bus.log(
+                    "revision_activated",
+                    self.time_s,
+                    revision=session.revision,
+                    planned_at_s=session.planned_at_s,
+                )
+            else:
+                session.state = "activation_rejected"
+                self.communication.bus.log("revision_activation_rejected", self.time_s)
+        self.agreement.transition(AgreementState.EXECUTING, self.time_s)
+
+    def _peer_timing_admission(self, peer, payload, at_s):
+        """Static cruising peers reserve ego timing only; no peer motion is revised."""
+        return (
+            peer in PEERS
+            and peer not in self.communication.session.remote_released_at_s
+            and payload["planned_at_s"] - self.config["lane_change_duration_s"] / 2 > at_s
+            and abs(payload["planned_at_s"] - self.agreement.planned_merge_time_s) <= 1.0 + 1e-8
+        )
 
     def _simulate_interval(self) -> dict[str, float]:
+        sent_before = getattr(self, "_interval_sent_before", self.communication.counts()["sent"])
+        cancel_before = self.metrics.cancel_requested_at_s
         components = {
             "progress": 0.0,
             "success": 0.0,
@@ -444,7 +669,7 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
             if self.time_s >= self.config["duration_s"] - 1e-9:
                 break
             dt = min(self.config["dt_s"], self.config["duration_s"] - self.time_s)
-            before = self._bodies()
+            before = self._traffic_bodies()
             before_time = self.time_s
             self.disturbance.update(self.time_s, self.np_random)
             self._apply_disturbance()
@@ -459,23 +684,50 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
                 payloads_before=payloads_before,
                 payloads_after=payloads_after,
                 dt=dt,
+                pulse=self.braking_pulse,
             ):
                 fraction = float(np.clip((at_s - before_time) / dt, 0, 1))
-                return {
+                payloads = {
                     peer: {
+                        **payloads_before[peer],
                         "x_m": payloads_before[peer]["x_m"]
-                        + fraction * (payloads_after[peer]["x_m"] - payloads_before[peer]["x_m"]),
-                        "speed_mps": payloads_before[peer]["speed_mps"],
+                        + payloads_before[peer]["speed_mps"] * fraction * dt
+                        + 0.5
+                        * (payloads_after[peer]["speed_mps"] - payloads_before[peer]["speed_mps"])
+                        * fraction**2
+                        * dt,
+                        "speed_mps": payloads_before[peer]["speed_mps"]
+                        + fraction
+                        * (payloads_after[peer]["speed_mps"] - payloads_before[peer]["speed_mps"]),
                     }
                     for peer in PEERS
                 }
+                if pulse is not None:
+                    x, speed = pulse.advance(
+                        payloads_before[PEERS[0]]["x_m"],
+                        payloads_before[PEERS[0]]["speed_mps"],
+                        before_time,
+                        fraction * dt,
+                    )
+                    payloads[PEERS[0]].update(x_m=x, speed_mps=speed)
+                return payloads
 
             self.communication.advance(self.time_s, sample)
+            self._update_revision()
             self.agreement.message_count = self.communication.counts()["sent"]
 
             feasibility = self._feasibility()
             self.agreement.feasible = feasibility.feasible
             self.agreement.feasibility_reason = feasibility.reason
+            active = self.agreement.state in {
+                AgreementState.ACCEPTED,
+                AgreementState.EXECUTING,
+                AgreementState.RENEGOTIATING,
+            }
+            persistent_invalid_dt = self._invalidity.observe(
+                active and not feasibility.feasible, dt, self.config["invalidation_persistence_s"]
+            )
+            self.metrics.failed_agreement_duration_s = self._invalidity.total_s
             if not feasibility.feasible and self._invalid_since_s is None:
                 self._invalid_since_s = self.time_s
             elif feasibility.feasible:
@@ -486,15 +738,23 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
             if self.ttc_s < self.config["min_ttc_s"]:
                 self.metrics.near_collision = True
                 components["near_collision"] -= 0.5 * dt
-            if self._invalid_since_s is not None:
-                invalid_duration = self.time_s - self._invalid_since_s
-                if invalid_duration >= self.config["invalidation_persistence_s"]:
-                    components["failed_time"] -= 0.2 * dt
+            components["failed_time"] -= 0.2 * persistent_invalid_dt
 
-            after = self._bodies()
+            after = self._traffic_bodies()
+            if (
+                self.ramp_y_m > 1e-6
+                and self.ramp_x_m + self.config["vehicle_length_m"] / 2
+                > self.config["ramp_end_m"] + 1e-8
+            ):
+                self.ramp_end_violation = True
+                self.metrics.ramp_end_violation = True
+                components["failed_time"] -= 100.0
+                if self.agreement.state in {AgreementState.EXECUTING, AgreementState.RENEGOTIATING}:
+                    self.agreement.transition(AgreementState.FAILED, self.time_s)
+                break
             if any(
                 swept_overlap(before[i], after[i], before[j], after[j])
-                for i, j in combinations(range(3), 2)
+                for i, j in combinations(range(len(before)), 2)
             ):
                 self.collision = True
                 self.metrics.collision = True
@@ -505,35 +765,32 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
                 self.metrics.completed_merge = True
                 components["success"] += 20.0
                 if self.agreement.state == AgreementState.EXECUTING:
-                    self.agreement.transition(AgreementState.COMPLETED, self.time_s)
-                if self.agreement.revision > 0:
+                    self.agreement.transition(
+                        AgreementState.FAILED if self.fallback_active else AgreementState.COMPLETED,
+                        self.time_s,
+                    )
+                self.metrics.completion_mode = "fallback" if self.fallback_active else "agreement"
+                if self.agreement.revision > 0 and not self.canceled and not self.fallback_active:
                     self.metrics.renegotiation_successes = 1
                 break
             components["progress"] += 0.02 * dt
-        if self.canceled:
+        if self.canceled and cancel_before is None:
             components["cancel"] -= 0.1
-        components["message"] -= 0.01 * self.agreement.message_count
+            self.metrics.cancel_requested_at_s = self.communication.session.requested_at_s
+        components["message"] -= 0.01 * (self.communication.counts()["sent"] - sent_before)
         components["comfort"] -= 0.01 * abs(self.ramp_accel_mps2)
         return components
 
     def _apply_disturbance(self) -> None:
-        if not self.disturbance.triggered:
-            return
-        scale = self.disturbance.severity_scale
-        kind = self.disturbance.disturbance_type
-        if kind == "cut_in":
-            # Legacy diagnostic only: does not change physical geometry. Step 3C
-            # must replace this with an actual vehicle; do not evaluate it as a cut-in.
-            self.synthetic_gap_bonus_m = min(self.synthetic_gap_bonus_m, -20.0 * scale)
-        elif kind == "braking":
-            self.front_speed_mps = max(8.0, 24.0 - 6.0 * scale)
-        elif kind == "intent_mismatch":
-            self._intent_position_error_m = 6.0 * scale
-            self._intent_speed_error_mps = 3.0 * scale
-            self._intent_inconsistency_count += 1
+        # Physical profiles are integrated by _advance_vehicles/absolute trajectory.
+        # Retained evaluator diagnostics are measured, never injected policy labels.
+        expected = self._front_intent_origin_x_m + self._front_intent_speed_mps * self.time_s
+        self._intent_position_error_m = self.front_x_m - expected
+        self._intent_speed_error_mps = self.front_speed_mps - self._front_intent_speed_mps
 
     def _advance_vehicles(self, dt_s: float | None = None) -> None:
         dt = self.config["dt_s"] if dt_s is None else dt_s
+        rear_accel = self._rear_following_accel(dt)
         target_speed = 18.0 if self.fallback_active else self.config["desired_speed_mps"]
         # A canceled ego may merge under fallback only if the same physical pair
         # remains safe. Otherwise it stays/returns to the ramp and stops at its end.
@@ -556,6 +813,7 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
         safety_speed_cap = float("inf")
         eligible = (
             self.ramp_x_m >= self.config["merge_start_m"]
+            and self.revision_session.state != "pending"
             and self.time_s
             >= self.agreement.planned_merge_time_s - self.config["lane_change_duration_s"] / 2
             and self.ramp_x_m + self.ramp_speed_mps * remaining_lateral_s
@@ -570,14 +828,39 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
             )
         elif self.ramp_y_m > 0.0 and self._lane_change_started:
             self.low_level_interventions += 1
-            self.ramp_y_m = min(
-                self.config["lane_width_m"],
-                self.ramp_y_m
-                + dt * self.config["lane_width_m"] / self.config["lane_change_duration_s"],
+            remaining = (
+                self.config["ramp_end_m"] - self.config["vehicle_length_m"] / 2 - self.ramp_x_m
             )
+            stop_need = (
+                self.ramp_speed_mps**2 / (2 * self.config["max_decel_mps2"])
+                + dt * self.ramp_speed_mps
+            )
+            if remaining < stop_need:
+                # Returning would violate the ramp boundary. Finish the physical
+                # transition under perception fallback; this does not validate the agreement.
+                self.fallback_active = True
+                self.ramp_y_m = max(
+                    0.0,
+                    self.ramp_y_m
+                    - dt * self.config["lane_width_m"] / self.config["lane_change_duration_s"],
+                )
+            else:
+                self.ramp_y_m = min(
+                    self.config["lane_width_m"],
+                    self.ramp_y_m
+                    + dt * self.config["lane_width_m"] / self.config["lane_change_duration_s"],
+                )
             if np.isclose(self.ramp_y_m, self.config["lane_width_m"]):
                 self._lane_change_started = False
-        if self.ramp_y_m > 0.0 and not self._lane_change_started and not expected_entry:
+        # Preserve an abort/stopping option while a locally detected adjacent car
+        # may interfere. This uses current perception, not its future cut-in time.
+        uncertain_adjacent_traffic = self._observed_intruder() is not None
+        slowing_peer = self.front_speed_mps < self.config["desired_speed_mps"] - 0.05
+        if (
+            self.ramp_y_m > 0.0
+            and not self._lane_change_started
+            and (not expected_entry or uncertain_adjacent_traffic or slowing_peer)
+        ):
             stopping_distance = max(
                 self.config["ramp_end_m"]
                 - self.config["vehicle_length_m"] / 2
@@ -590,17 +873,32 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
             stop_speed = max(
                 0.0, np.sqrt((decel * dt) ** 2 + 2 * decel * stopping_distance) - decel * dt
             )
-            if target_speed > stop_speed:
-                target_speed = stop_speed
-                safety_speed_cap = stop_speed
+            # Even a fallback target below stop_speed may approach it too slowly
+            # to preserve stopping distance. Enforce the next-step cap itself.
+            safety_speed_cap = min(safety_speed_cap, stop_speed)
+            if target_speed > stop_speed or self.ramp_speed_mps > stop_speed:
                 self.low_level_interventions += 1
-        ego, front, _ = self._bodies()
-        if lateral_overlap(ego, front):
+            target_speed = min(target_speed, stop_speed)
+        ego = self._bodies()[0]
+        for front, front_speed in zip(
+            self._traffic_bodies()[1:], self._traffic_speeds()[1:], strict=True
+        ):
+            if front.x <= ego.x or not lateral_overlap(ego, front):
+                continue
             front_bound = np.sqrt(
-                self.front_speed_mps**2
-                + 2
-                * self.config["max_decel_mps2"]
-                * max(self.front_clearance_m - self.config["min_gap_m"], 0.0)
+                max(
+                    0.0,
+                    front_speed**2
+                    + 2
+                    * self.config["max_decel_mps2"]
+                    * (
+                        bumper_clearance(ego, front)
+                        - max(
+                            self.config["min_gap_m"],
+                            self.config["min_headway_s"] * self.ramp_speed_mps,
+                        )
+                    ),
+                )
             )
             if target_speed > front_bound:
                 target_speed = front_bound
@@ -623,15 +921,28 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
         self._last_accel = self.ramp_accel_mps2
         self.ramp_speed_mps = max(0.0, self.ramp_speed_mps + self.ramp_accel_mps2 * dt)
         self.ramp_x_m += self.ramp_speed_mps * dt
-        self.front_x_m += self.front_speed_mps * dt
-        self.rear_x_m += self.rear_speed_mps * dt
+        if self.braking_pulse is None:
+            self.front_x_m += self.front_speed_mps * dt
+        else:
+            self.front_x_m, self.front_speed_mps = self.braking_pulse.advance(
+                self.front_x_m, self.front_speed_mps, self.time_s, dt
+            )
+        rear_before = self.rear_speed_mps
+        self.rear_speed_mps = max(0.0, rear_before + rear_accel * dt)
+        self.rear_x_m += (rear_before + self.rear_speed_mps) * dt / 2
 
     def _observation(self) -> np.ndarray:
         return encode(self._manager_values())
 
     def _beacon_payloads(self) -> dict[str, dict]:
         return {
-            PEERS[0]: {"x_m": self.front_x_m, "speed_mps": self.front_speed_mps},
+            PEERS[0]: {
+                "x_m": self.front_x_m,
+                "speed_mps": self.front_speed_mps,
+                "intent_origin_x_m": self._front_intent_origin_x_m,
+                "intent_speed_mps": self._front_intent_speed_mps,
+                "intent_at_s": 0.0,
+            },
             PEERS[1]: {"x_m": self.rear_x_m, "speed_mps": self.rear_speed_mps},
         }
 
@@ -669,7 +980,13 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
             max(rear_clearance, 0.0) / max(rear_speed, 0.1),
         )
         session = self.communication.session
-        return {
+        intruder = self._observed_intruder()
+        front_message = cache.get(PEERS[0])
+        intent = front_message.payload if front_message else {}
+        has_intent = all(
+            k in intent for k in ("intent_origin_x_m", "intent_speed_mps", "intent_at_s")
+        )
+        values = {
             "ego_speed_mps": self.ramp_speed_mps,
             "ego_accel_mps2": self.ramp_accel_mps2,
             "ego_lateral_m": self.ramp_y_m,
@@ -705,7 +1022,58 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
             "local_canceled": float(self.canceled),
             "time_s": self.time_s,
             "local_agreement_state": list(AgreementState).index(self.agreement.state),
+            "intruder_detected": float(intruder is not None),
+            "intruder_relative_m": intruder.x - self.ramp_x_m if intruder else 0.0,
+            "intruder_speed_mps": self.cut_in_trajectory.speed_mps if intruder else 0.0,
+            "intruder_lateral_m": intruder.y if intruder else 0.0,
+            "slot_occupied": float(self._slot_occupied(intruder, rear_x, front_x)),
+            "front_intent_received": float(has_intent),
+            "front_intent_position_error_m": (
+                intent["x_m"]
+                - intent["intent_origin_x_m"]
+                - intent["intent_speed_mps"] * (front_message.sent_at_s - intent["intent_at_s"])
+                if has_intent
+                else 0.0
+            ),
+            "front_intent_speed_error_mps": (
+                intent["speed_mps"] - intent["intent_speed_mps"] if has_intent else 0.0
+            ),
+            "front_intent_age_s": self.time_s - intent["intent_at_s"] if has_intent else 0.0,
+            "keep_status": 0.0,
+            "keep_completion_s": 0.0,
+            "fallback_status": 0.0,
+            "fallback_completion_s": 0.0,
+            "advance_feasible": 0.0,
+            "advance_completion_s": 0.0,
+            "delay_feasible": 0.0,
+            "delay_completion_s": 0.0,
+            "proposal_pending": float(self.revision_session.state == "pending"),
         }
+        if not self.config.get("_prediction_replica", False):
+            from rene.agreements.candidates import timing_candidates
+            from rene.prediction.rollouts import predict
+
+            snapshot = decode(encode(values))
+            # Predictions see exactly the same clipping/float32 precision as PPO.
+            key = tuple(snapshot.values())
+            if self._assessment_cache is None or self._assessment_cache[0] != key:
+                keep = predict(snapshot, self.config)
+                fallback = predict(snapshot, self.config, fallback=True)
+                candidates = timing_candidates(snapshot, self.config)
+                statuses = {"UNKNOWN": 0, "INFEASIBLE": 1, "SAFE_COMPLETION": 2}
+                fields = {
+                    "keep_status": statuses[keep.status],
+                    "keep_completion_s": keep.completion_s or 0,
+                    "fallback_status": statuses[fallback.status],
+                    "fallback_completion_s": fallback.completion_s or 0,
+                }
+                for candidate in candidates:
+                    prefix = "advance" if candidate.delta_s < 0 else "delay"
+                    fields[f"{prefix}_feasible"] = 1.0
+                    fields[f"{prefix}_completion_s"] = candidate.prediction.completion_s
+                self._assessment_cache = (key, fields)
+            values.update(self._assessment_cache[1])
+        return values
 
     def _info(self) -> dict[str, Any]:
         values = decode(self._observation())
@@ -719,12 +1087,14 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
             min_ttc_s=self.config["min_ttc_s"],
             min_headway_s=self.config["min_headway_s"],
         )
+        if values["slot_occupied"] > 0.5:
+            estimated = FeasibilityResult(False, "target_slot_occupied")
         return {
             "episode_id": self._episode_id,
             "time_s": self.time_s,
             "manager_inputs": values,
             "input_version": INPUT_VERSION,
-            "physics_version": "step3a-axis-aligned-v1",
+            "physics_version": "step3c6-timing-execution-v1",
             "agreement_state": self.agreement.state.value,
             "agreement_feasible": estimated.feasible,  # Received-data estimate, not truth.
             "feasibility_reason": estimated.reason,
@@ -746,9 +1116,8 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
         self.metrics.cancel_timed_out_at_s = session.timed_out_at_s
         self.communication.bus.log("episode_terminal", self.time_s, protocol_state=session.state)
         self.metrics.merge_completion_time_s = self.time_s if self.completed else 0.0
-        if self._invalid_since_s is not None:
-            self.metrics.failed_agreement_duration_s = max(0.0, self.time_s - self._invalid_since_s)
-        self.metrics.unnecessary_cancellation = bool(self.canceled and self._feasibility().feasible)
+        self.metrics.failed_agreement_duration_s = self._invalidity.total_s
+        # No end-of-episode feasibility proxy: a decision-time counterfactual is required.
 
     def render(self) -> np.ndarray | None:
         if self.render_mode != "rgb_array":
@@ -763,13 +1132,17 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
         x_max = self.ramp_x_m + 60.0
         x_scale = width / (x_max - x_min)
         y_scale = x_scale
-        main_y = height / 2
+        # Leave a clear caption band above the added adjacent freeway lane.
+        main_y = height / 2 + 24
 
         def road_y(y_m: float) -> int:
             return int(main_y + y_m * y_scale)
 
         half_lane = self.config["lane_width_m"] / 2
         image[road_y(-half_lane) : road_y(half_lane), :, :] = (70, 70, 75)
+        if self.cut_in_trajectory is not None:
+            image[road_y(-3 * half_lane) : road_y(-half_lane), :, :] = (70, 70, 75)
+            image[road_y(-half_lane) - 1 : road_y(-half_lane) + 1, :, :] = 220
         ramp_end = int(np.clip((self.config["ramp_end_m"] - x_min) * x_scale, 0, width))
         image[road_y(half_lane) : road_y(3 * half_lane), :ramp_end, :] = (85, 85, 90)
         boundary_y = road_y(half_lane)
@@ -790,4 +1163,6 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
         vehicle(front, (40, 120, 220))
         vehicle(rear, (40, 120, 220))
         vehicle(ego, (220, 90, 40))
+        if self.cut_in_trajectory is not None:
+            vehicle(self.cut_in_trajectory.body_at(self.time_s), (160, 70, 190))
         return image

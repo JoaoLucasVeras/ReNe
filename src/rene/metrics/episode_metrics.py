@@ -10,8 +10,8 @@ class EpisodeMetrics:
     episode_id: str
     seed: int
     manager: str = "external"
-    physics_version: str = "step3a-axis-aligned-v1"
-    input_version: str = "received-state-v1"
+    physics_version: str = "step3c6-timing-execution-v1"
+    input_version: str = "lifecycle-prediction-v4"
     messages_delivered: int = 0
     messages_dropped: int = 0
     cancel_protocol_state: str = "active"
@@ -22,11 +22,15 @@ class EpisodeMetrics:
     cancel_confirmed_at_s: float | None = None
     cancel_timed_out_at_s: float | None = None
     collision: bool = False
+    ramp_end_violation: bool = False
     near_collision: bool = False
     completed_merge: bool = False
+    completion_mode: str = "not_completed"
     canceled: bool = False
     failed_agreement_duration_s: float = 0.0
-    unnecessary_cancellation: bool = False
+    unnecessary_cancellation: bool | None = None
+    cancellation_label_status: str = "counterfactual_not_implemented"
+    metrics_version: str = "event-accounting-v2"
     renegotiation_attempts: int = 0
     renegotiation_successes: int = 0
     shield_overrides: int = 0

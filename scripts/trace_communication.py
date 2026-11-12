@@ -29,15 +29,24 @@ def main():
     parser.add_argument("--loss", type=float, default=0)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
+        "--disturbance", choices=["none", "braking", "cut_in", "intent_mismatch"], default="none"
+    )
+    parser.add_argument(
         "--manager",
         default="rule_cancel",
-        choices=["one_shot", "rule_cancel", "heuristic_renegotiate"],
+        choices=[
+            "one_shot",
+            "rule_cancel",
+            "heuristic_renegotiate",
+            "paper_cancel_merge_adapted",
+            "matched_heuristic",
+        ],
     )
     parser.add_argument("--output", default="results/raw/communication")
     args = parser.parse_args()
     sim = MergeLifecycleEnv(
         config={
-            "disturbance_type": "none",
+            "disturbance_type": args.disturbance,
             "communication_delay_ms": args.delay_ms,
             "packet_loss": args.loss,
         }
@@ -48,6 +57,7 @@ def main():
     rows = []
     while True:
         requested = manager.act(obs, info)
+        intruder = sim.cut_in_trajectory.body_at(sim.time_s) if sim.cut_in_trajectory else None
         # Evaluator-only truth is deliberately separate from the manager's data.
         rows.append(
             {
@@ -56,6 +66,8 @@ def main():
                 "true_front_x_m": sim.front_x_m,
                 "true_rear_x_m": sim.rear_x_m,
                 "true_front_speed_mps": sim.front_speed_mps,
+                "true_intruder_x_m": intruder.x if intruder else None,
+                "true_intruder_y_m": intruder.y if intruder else None,
                 "protocol_state": sim.communication.session.state,
             }
         )
@@ -70,6 +82,7 @@ def main():
     data = finite_json(
         {
             "settings": vars(args),
+            "environment_config": sim.config,
             "metrics": info["episode_metrics"],
             "decisions": info["decision_log"],
             "communication": info["communication_log"],

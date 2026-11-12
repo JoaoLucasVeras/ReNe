@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import numpy as np
 
-INPUT_VERSION = "received-state-v1"
+INPUT_VERSION = "lifecycle-prediction-v4"
 FEATURES = (
     ("ego_speed_mps", 0, 40),
     ("ego_accel_mps2", -5, 5),
@@ -45,6 +45,24 @@ FEATURES = (
     ("local_canceled", 0, 1),
     ("time_s", 0, 60),
     ("local_agreement_state", 0, 6),
+    ("intruder_detected", 0, 1),
+    ("intruder_relative_m", -250, 250),
+    ("intruder_speed_mps", 0, 40),
+    ("intruder_lateral_m", -6, 6),
+    ("slot_occupied", 0, 1),
+    ("front_intent_received", 0, 1),
+    ("front_intent_position_error_m", -250, 250),
+    ("front_intent_speed_error_mps", -20, 20),
+    ("front_intent_age_s", 0, 60),
+    ("keep_status", 0, 2),
+    ("keep_completion_s", 0, 30),
+    ("fallback_status", 0, 2),
+    ("fallback_completion_s", 0, 30),
+    ("advance_feasible", 0, 1),
+    ("advance_completion_s", 0, 30),
+    ("delay_feasible", 0, 1),
+    ("delay_completion_s", 0, 30),
+    ("proposal_pending", 0, 1),
 )
 
 

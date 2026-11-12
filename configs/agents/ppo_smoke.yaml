@@ -1,0 +1,9 @@
+ppo:
+  policy: MlpPolicy
+  learning_rate: 0.0003
+  n_steps: 16
+  batch_size: 16
+  n_epochs: 1
+  policy_kwargs:
+    net_arch: [128, 128]
+  device: cpu
