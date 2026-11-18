@@ -11,7 +11,7 @@ class EpisodeMetrics:
     seed: int
     manager: str = "external"
     physics_version: str = "step3c6-timing-execution-v1"
-    input_version: str = "lifecycle-prediction-v4"
+    input_version: str = "lifecycle-prediction-v7"
     messages_delivered: int = 0
     messages_dropped: int = 0
     cancel_protocol_state: str = "active"

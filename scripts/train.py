@@ -8,13 +8,14 @@ from pathlib import Path
 
 import gymnasium as gym
 import torch
+from sb3_contrib import MaskablePPO
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 
 import rene  # noqa: F401
 from rene.envs.manager_inputs import FEATURES, INPUT_VERSION
-from rene.envs.scenarios import TrainingScenarios
+from rene.envs.scenarios import TRAINING_RAMP_ENDS_M, TrainingScenarios
 from rene.utils.configuration import load_yaml
 from rene.utils.provenance import source_fingerprint
 
@@ -70,7 +71,11 @@ def main() -> None:
     kwargs = dict(ppo)
     policy = kwargs.pop("policy")
     device = kwargs.pop("device", "cpu")
-    model = PPO(policy, vec, seed=seed, device=device, tensorboard_log=str(output), **kwargs)
+    algorithm = kwargs.pop("algorithm", "maskable_ppo")
+    if algorithm not in {"maskable_ppo", "ppo"}:
+        raise SystemExit(f"unknown algorithm: {algorithm}")
+    algo_cls = MaskablePPO if algorithm == "maskable_ppo" else PPO
+    model = algo_cls(policy, vec, seed=seed, device=device, tensorboard_log=str(output), **kwargs)
     model.learn(total_timesteps=args.timesteps or int(exp["total_timesteps"]))
     model.save(output / "model")
     vec.save(output / "vec_normalize.pkl")
@@ -81,8 +86,12 @@ def main() -> None:
         "seed": seed,
         "timesteps": model.num_timesteps,
         "device": str(model.device),
+        "algorithm": algorithm,
         "environment_config": config,
         "experiment": exp,
+        "training_ramp_ends_m": (
+            list(TRAINING_RAMP_ENDS_M) if exp.get("sample_scenarios", False) else None
+        ),
         "validation_status": "development_unvalidated_acknowledged",
     }
     (output / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")

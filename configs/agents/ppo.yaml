@@ -1,4 +1,5 @@
 ppo:
+  algorithm: maskable_ppo  # invalid timing actions are masked (Nov 18)
   policy: MlpPolicy
   learning_rate: 0.0003
   n_steps: 512

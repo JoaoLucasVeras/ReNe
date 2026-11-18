@@ -4,7 +4,7 @@ from math import isfinite
 
 from rene.agreements.state import ManagerAction
 from rene.envs.manager_inputs import decode
-from rene.prediction.rollouts import Prediction
+from rene.prediction.rollouts import STATUS_NAMES, Prediction
 
 
 def reference_incentive(desired: float, current: float, target: float) -> float:
@@ -21,6 +21,9 @@ def adapted_decision(keep: Prediction, fallback: Prediction, margin_s: float = 0
         return ManagerAction.CONTINUE, "retained_or_tied"
     if keep.status == "INFEASIBLE" and fallback.status == "SAFE_COMPLETION":
         return ManagerAction.CANCEL, "accepted_plan_infeasible"
+    if keep.status == "NO_COMPLETION" and fallback.status == "SAFE_COMPLETION":
+        # Spec section 4: demonstrated inability to complete before the usable ramp end.
+        return ManagerAction.CANCEL, "accepted_plan_cannot_complete"
     if keep.status == "SAFE_COMPLETION":
         return ManagerAction.CONTINUE, "retained_safe_plan"
     return ManagerAction.CONTINUE, "prediction_unresolved"
@@ -41,10 +44,9 @@ class PaperCancelMergeAdapted:
 
 
 def prediction_pair(values):
-    statuses = {0: "UNKNOWN", 1: "INFEASIBLE", 2: "SAFE_COMPLETION"}
     return tuple(
         Prediction(
-            statuses[round(values[f"{prefix}_status"])],
+            STATUS_NAMES[round(values[f"{prefix}_status"])],
             values[f"{prefix}_completion_s"] or None,
             "shared_received_prediction",
             0,

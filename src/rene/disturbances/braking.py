@@ -17,6 +17,15 @@ class BrakingPulse:
     cruise_mps: float
     floor_mps: float
 
+    def accel_at(self, time_s: float, speed: float) -> float:
+        """Current commanded acceleration, matching the phases integrated by advance."""
+        brake_end = self.trigger_s + self.brake_s
+        if self.trigger_s <= time_s < brake_end:
+            return -self.decel_mps2 if speed > self.floor_mps + 1e-9 else 0.0
+        if time_s >= brake_end + self.hold_s:
+            return self.recovery_mps2 if speed < self.cruise_mps - 1e-9 else 0.0
+        return 0.0
+
     def advance(self, x: float, speed: float, start: float, duration: float):
         """Integrate exactly, including off-grid phase boundaries and speed caps."""
         end = start + duration
