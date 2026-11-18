@@ -49,9 +49,36 @@ early/late and out-of-range-channel stress tests separately if included; their
 development pilots are not held-out robustness evidence. Any matrix reduction
 requires an explicit recorded budget decision before viewing final outcomes.
 
+## Ramp-length protocol (adopted November 18 2026)
+
+Ramp length is a per-episode scenario factor (`ramp_end_m` reset option; merge point
+200 m and merge start 140 m fixed). It was fixed from development-seed sweeps (seeds
+42-44) before any final-test result was examined; see the project log, November 13.
+
+| Role | Lengths | Use |
+|---|---|---|
+| Training / tuning | 260, 270, 290, 300 m | PPO training; rule thresholds, heuristic scoring, reward weights and hyperparameters |
+| Held-out | 280 m | Evaluation only: interpolation inside the decision band |
+| Edge | 320 m | Evaluation only: band edge (decisions matter only for intent mismatch) |
+| Controls | 240, 400 m | Evaluation only: no decision window; managers are expected to tie |
+
+- `rene.envs.scenarios` defines these sets. `TrainingScenarios` samples only training
+  lengths and raises if an evaluation-only length is requested.
+- The evaluation manifest crosses every condition with all eight lengths and tags each
+  row with `ramp_role`. Final evaluation is 192 conditions x 8 lengths x 5 seeds = 7,680
+  episodes per manager/model.
+- Report per length and role; never pool across roles. A learned/rule difference on a
+  control length indicates an implementation fault or a hidden safety cost.
+- Cut-ins leave no decision window at any tested length; for cut-ins the comparison
+  measures fallback quality, not lifecycle decisions.
+- Changing these lengths after final-test inspection invalidates the protocol.
+
 ## Inputs and proposal abstraction
 
-Current contract: 53 features, `lifecycle-prediction-v4`. It includes received peer
+Current contract: 58 features, `lifecycle-prediction-v7` (v5 adds the `NO_COMPLETION`
+prediction status, v6 an ideally sensed non-connected follower, v7 received front
+acceleration and sensed intruder lateral speed; see the project log,
+November 13). It includes received peer
 state/intent residuals, idealized local intruder detection, keep/fallback prediction
 summaries, candidate masks/times and local protocol state. Rules use the same
 float32 decoded vector, not privileged `info` fields.

@@ -83,12 +83,12 @@ From one timestamped observation snapshot, predict two branches:
 - `P_keep`: execute the accepted gap/time plan with the common controller.
 - `P_fallback`: end that agreement and use the common perception-based fallback.
 
-Both branches use identical received data, motion assumptions, safety constraints, and integration resolution. Predictions must not clone future disturbance schedules, random-generator state, or unrevealed simulator truth. A default neighbor predictor uses received intent when usable and constant-velocity extrapolation otherwise; prediction error is expected and evaluated.
+Both branches use identical received data, motion assumptions, safety constraints, and integration resolution. Predictions must not clone future disturbance schedules, random-generator state, or unrevealed simulator truth. A default neighbor predictor uses received intent when usable and constant-velocity extrapolation otherwise; prediction error is expected and evaluated. November 13 ReNe adaptation: received front acceleration persists for 2 s, then constant speed; sensed intruder lateral speed continues until lane-centered; an unseen follower is assumed just beyond the 120 m rearward sensor range (forward range stays 60 m).
 
 Return, for each branch:
 
 ```text
-status: SAFE_COMPLETION | INFEASIBLE | UNKNOWN
+status: SAFE_COMPLETION | INFEASIBLE | NO_COMPLETION | UNKNOWN
 estimated_completion_time_s: finite value only for SAFE_COMPLETION
 constraint_margins: gap, conflict/headway, acceleration, ramp-end
 reason_code
@@ -105,6 +105,7 @@ input_timestamp and age
 | Safe completion | Safe completion | Compare completion times as below. |
 | Safe completion | Infeasible or unknown | Continue. |
 | Infeasible | Safe completion | Cancel with reason `accepted_plan_infeasible`. |
+| No completion | Safe completion | Cancel with reason `accepted_plan_cannot_complete` (ReNe adaptation, November 13). |
 | Any other combination | Any other combination | Continue with reason `prediction_unresolved`; shared emergency shield remains active. |
 
 When both branches predict safe completion:

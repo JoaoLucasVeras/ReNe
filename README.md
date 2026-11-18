@@ -57,7 +57,13 @@ and received state. Step 3C1 adds [bounded braking and its checks](docs/STEP3C1_
 Step 3C2 adds a [physical cut-in and a 40-feature shared contract](docs/STEP3C2_PHYSICAL_CUT_IN.md).
 The November 12 [CPU integration and handoff](docs/CPU_TO_TRAINING_HANDOFF.md) adds
 53-feature input v4, timing proposals/execution and core metric repairs. Older
-checkpoints/normalizers are incompatible. The current suite has 200 passing tests.
+checkpoints/normalizers are incompatible. November 13: input v5 adds a `NO_COMPLETION`
+prediction status; input v6 (56 features) adds a non-connected follower and a next-gap
+perception fallback; v7 (58 features) adds received front acceleration and sensed
+intruder lateral speed; rearward sensing is 120 m (see the project log). The current suite
+has 234 passing tests. Baselines are frozen in [BASELINE_FREEZE.md](docs/BASELINE_FREEZE.md);
+PPO uses MaskablePPO on CPU (GPU benchmarked slower). Ramp length follows the adopted protocol in
+[the experiment protocol](docs/EXPERIMENT_PROTOCOL.md) (train 260/270/290/300 m, held-out 280 m).
 The initial pilot's ramp failures prompted shared controller/rear-following repairs.
 Post-repair pilots of 144/384/96 episodes have no collisions/ramp departures in tested
 cases. Offline cancellation counterfactuals and paired analysis are implemented.

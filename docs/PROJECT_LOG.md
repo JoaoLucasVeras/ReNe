@@ -303,6 +303,281 @@ not rerun for this log.
 - Push confirmation is reported after checking GitHub's branch head. The documentation
   commit containing this entry and `9fdccb0` are the authorized publication scope.
 
+### November 13 2026 shield measurement and predictor NO_COMPLETION status
+
+- Goal and scope: measure whether the common shield decides outcomes before PPO
+  training; trace why the shared predictor returns UNKNOWN; implement fix A.
+- Measurement (development seeds 42-44; 972 paired scenarios x 5 managers; densities,
+  four disturbances, delay 0/100/800 ms, loss 0/0.2/0.5, mild/moderate/hard):
+  B1 and B2 outcomes were identical in 972/972 scenarios; every B2 cancellation came
+  from the shield. An offline unshielded hold-CONTINUE replay of all 1,503 shield
+  cancellations never recovered feasibility, completed the agreement or collided.
+  Random policies cancelled in 972/972 episodes, mostly via infeasible renegotiation
+  requests converted to CANCEL; action masking is required before PPO.
+  B3 had 123 forced mid-lane-change fallback completions versus 27 for B1/B2.
+- Root cause: about 93% of UNKNOWN predictions were `horizon_without_completion`
+  (safe rollout that never merged), not missing/stale data, and B2 maps UNKNOWN to
+  CONTINUE. Contributing biases: fallback may only reuse the same physical gap, so
+  it nearly always ends in a ramp stop; constant-velocity peers plus the speed-based
+  stopping reserve make braking/intent predictions pessimistic; frozen intruder
+  lateral position makes cut-in predictions optimistic.
+- Work completed: predictor status `NO_COMPLETION` (ego fully on the ramp has stopped
+  or can no longer fit its lateral move before the usable ramp end), per the
+  specification's "demonstrated inability" wording. UNKNOWN still covers missing/
+  stale data and insufficient horizon. B2 cancels on NO_COMPLETION + fallback safe
+  completion. Status features widened to 0..3; input version `lifecycle-prediction-v5`.
+  Files: prediction/rollouts.py, envs/manager_inputs.py, envs/merge_lifecycle_env.py,
+  policies/literature_cancellation.py, metrics/episode_metrics.py, tests.
+- Validation: 208 tests and lint pass. Rerun of the same 972-scenario grid: outcomes
+  unchanged; B2 still never cancels. The predictor now reports NO_COMPLETION 1-2 s
+  before the shield in braking/intent cases at medium/high density, but the fallback
+  branch is also NO_COMPLETION, and the specified table continues in that case.
+- Remaining issues: fallback modelling (fix B) now determines whether B2 can ever
+  cancel; decide whether both-branches-fail should cancel (a protocol choice, not
+  attributed to S1); peer-braking prediction (C); cut-in lateral prediction (D).
+- Publication: local branch `fix/predictor-no-completion`, not committed or pushed.
+- Next task: decide fallback design (B) and the both-fail rule, then rerun the measurement.
+
+### November 13 2026 next-gap perception fallback (fix B)
+
+- Goal and scope: give cancellation a physically meaningful alternative. Previously
+  the fallback could only reuse the same named gap, so it nearly always ended in a
+  ramp stop and B2's "keep fails, fallback succeeds" row could never apply.
+- Work completed: a non-connected mainline follower starts one density gap behind the
+  rear peer and uses the shared bounded car-following law. After cancellation, the
+  ego tracks the nearest large-enough gap between consecutive mainline vehicles,
+  with relative speed bounded by sqrt(2 * 0.8 * limit * distance) to avoid overshoot,
+  and a 1.5 speed-loop gain while tracking (cruise gain unchanged). It may start a
+  lane change into any bounded opening passing the same gap/headway/TTC limits and
+  projection as the agreement slot; open road past the last modeled vehicle never
+  counts. The fallback keeps the nominal merge location (lane change centered on the
+  merge point) but not the canceled plan's timing. Without the location rule, B2
+  cancelled healthy nominal agreements because an earlier uncooperative merge looked
+  faster. The ramp-end stopping reserve is unchanged. Inputs v6 (56 features) add an
+  ideally sensed follower within the 60 m local range; the predictor assumes an
+  unseen follower just beyond that range, and the fallback branch uses a 10 s horizon.
+  `fallback_next_gap: false` restores the previous behaviour.
+- Validation: 214 tests and lint pass. Stale fixtures (body indices, "no merge at
+  all") now assert their intent (no agreement completion, no ramp-end violation).
+  The same 972-scenario grid: 0 collisions and 0 ramp-end violations for every
+  manager. Random early cancels now reach a fallback merge in 369/972 episodes
+  (previously 2); about 36-40% success when cancelling in the first 2 s, rare after 4 s.
+  B1 cut-ins: 18 fallback merges (previously 0).
+- Finding: B2 still equals B1 (972/972), also with triggers at 2 and 3.5 s. The
+  shield fires at the same decision step the predictor first sees trouble, because
+  the predictor assumes constant peer speed (bias C) and frozen intruder lateral
+  position (bias D). Late fallbacks are limited by ramp geometry: after slowing for
+  the next gap, the stopping reserve keeps the ego below gap speed.
+- Remaining issues: anticipatory prediction (C, D) decides whether any manager can act
+  before the shield; review ramp length/trigger timing as a scenario-design choice.
+- Publication: local branch `fix/predictor-no-completion`, not committed or pushed.
+
+### November 13 2026 anticipatory prediction (fixes C and D)
+
+- Goal and scope: let the shared predictor see trouble before the truth-based shield.
+- Work completed: front state beacons carry the current acceleration (as cooperative
+  awareness messages do; `BrakingPulse.accel_at`). The predictor holds a received
+  acceleration for 2 s (deadband 0.1 m/s^2), then constant speed, or accelerates up
+  to the desired speed. The local sensor reports intruder lateral speed from a 0.1 s
+  backward difference (zero at the exact onset), and `predicted_intruder` continues
+  that motion until lane-centered instead of freezing the lateral position. Inputs v7
+  (58 features): `front_accel_mps2`, `intruder_lateral_speed_mps`. These are declared
+  ReNe prediction assumptions, recorded in the specification.
+- Validation: 219 tests and lint pass (new: pulse acceleration phases, received
+  acceleration input, pessimism versus constant velocity, onset-zero lateral speed,
+  continued intruder trajectory). Same 972-scenario grid: 0 collisions/ramp-end
+  violations. B2 now initiates 16 cancellations and B3 142, but at the same decision
+  step the shield would have fired; B1/B2 outcomes remain identical (972/972).
+- Finding: in a 36-episode trace (triggers 3.5/5 s, hard severity) the predictor flags
+  a failing keep branch 1-6 s before the shield in 28/30 cases, but the fallback
+  branch is NO_COMPLETION in 118/120 such decisions, so the B2 table continues. Causes:
+  the unseen follower is placed at the 60 m sensor limit, about 30 m behind the rear
+  peer, leaving no usable predicted next gap; and late fallbacks are limited by the
+  240 m ramp (random cancels reach a fallback merge 36-40% of the time in the first 2 s,
+  about 27% at 4-5 s, rarely later).
+- Remaining design choices: rear sensing range or unseen-vehicle assumption; ramp
+  length/trigger timing; whether "both branches fail" should cancel (not from S1).
+- Publication: local branch `fix/predictor-no-completion`, not committed or pushed.
+
+### November 13 2026 rearward sensing range
+
+- Work completed: `rear_sensor_range_m: 120.0` (rear-radar class) applies to bodies
+  behind the ego; the forward `local_sensor_range_m` stays 60 m. The predictor's
+  unseen-follower phantom moves to the rearward limit. No input-contract change.
+- Validation: 222 tests and lint pass (new: low-density follower detected beyond 60 m,
+  forward range unchanged, early nominal fallback prediction is SAFE_COMPLETION).
+  972-scenario grid unchanged: 0 collisions/ramp-end violations; B1/B2 identical.
+- Finding: before a disturbance both branches are now predicted SAFE, but at the first
+  decision after it both flip to NO_COMPLETION together in every braking, intent and
+  cut-in trace. The shared controller's ramp-end stopping reserve triggers on
+  `slowing_peer` (named front below desired speed) and `uncertain_adjacent_traffic`
+  (any sensed intruder) even after cancellation, when the ego targets another gap.
+  In the constant-speed predicted world these never clear, so the canceled ego cannot
+  regain gap speed. The B2 table continues on NO/NO.
+- Next design choice: scope those reserve triggers to the vehicles bounding the gap
+  actually being targeted (a shared controller change affecting every manager).
+- Publication: local branch `fix/predictor-no-completion`, not committed or pushed.
+
+### November 13 2026 scoped fallback reserve and gap-tracking corrections
+
+- Work completed: after cancellation (next-gap mode) the stopping-reserve triggers read
+  the targeted gap: `slowing_peer` uses its leader, and `uncertain_adjacent_traffic`
+  counts only an intruder still beside the lane and alongside that gap. Agreement
+  behaviour is unchanged. Two corrections to the fix-B gap tracking: the gap center
+  is tracked at the mean of its bounding speeds (not the follower's), and a gap is
+  usable only if still large enough after the 3 s entry window (closing gaps skipped).
+  Shared `_target_gap()` serves alignment and the reserve.
+- Validation: 225 tests and lint pass (closing gap skipped, center speed, reserve
+  target). 972-scenario grid: 0 collisions/ramp-end violations for every manager;
+  fallback merges B1 45 -> 54, random 369 -> 378. B1/B2 still identical (972/972).
+- Finding (root limit): the scoped triggers did not change predictions. A rollout
+  probe (braking, medium, trigger 3.5 s, t = 4 s) shows the fallback now switching to
+  the gap behind the rear peer at 5 s, but the ego is then ~30 m ahead of the rear
+  with the gap center ~65 m behind and ~95 m of ramp left; dropping back one whole
+  gap is not reachable, and the gap later closes as the follower catches the slowed
+  rear. The original gap was open at 4.2 s, but the fallback is held to the nominal
+  merge location (fix-B fairness rule). In this geometry (merge near 175-200 m, ramp
+  end 240 m, disturbances visible at 3.5-6.5 s) no physically reachable alternative
+  remains once a disturbance is visible, so lifecycle decisions cannot change outcomes.
+- Next design choice: scenario geometry (ramp/merge-zone length, merge-location
+  flexibility applied equally to agreement and fallback, trigger timing), or report
+  the equivalence as a geometry-bounded result.
+- Publication: local branch `fix/predictor-no-completion`, not committed or pushed.
+
+### November 13 2026 ramp-length sensitivity sweep
+
+- Goal and scope: test whether a longer ramp opens a decision window. Config-only
+  override of `ramp_end_m` (merge point 200 m, merge start 140 m unchanged); defaults
+  NOT changed. Same 972-scenario development grid (seeds 42-44) per length.
+- Results (B1 one-shot / B2 paper-adapted / B3 matched heuristic; merges = agreement +
+  fallback completions; 0 collisions and 0 ramp-end violations at every length):
+
+  | Ramp end | B2 differs from B1 | B1 merges | B2 merges | B2 agreement | B2 own cancels | B3 forced commits |
+  |---|---:|---:|---:|---:|---:|---:|
+  | 240 m | 0.0% | 432 | 432 | 378 | 23 (same step as shield) | 123 |
+  | 280 m | 8.1% | 459 | 494 | 355 | 125 | 7 |
+  | 320 m | 2.6% | 486 | 486 | 380 | 25 | 0 |
+  | 400 m | 0.0% | 648 | 648 | 351 | 0 | 0 |
+
+- Interpretation: the decision window is non-monotone. At 240 m no alternative is
+  reachable once a disturbance is visible; at 400 m even a late shield cancellation
+  reaches a fallback, so early cancellation adds nothing. Around 280 m B2's own
+  cancellations trade 23 lost agreements for 35 more total merges, which is the
+  unnecessary-versus-useful cancellation trade-off the research question targets.
+  B3's apparent 240 m advantage came mainly from forced mid-lane-change completions
+  (emergency commits), which disappear on longer ramps; B3 also renegotiates in
+  every episode (972/972) and needs review before it is frozen.
+- Evidence: `results/raw/ramp-sweep/ramp-{280,320,400}/` (Git-ignored); 240 m baseline
+  `results/raw/shield-measurement/20261113T210328Z`.
+- Next design choice: adopt a ramp length (or a small set) where decisions matter,
+  then rerun pilots, review B3, and freeze baselines before PPO.
+- Publication: local branch `fix/predictor-no-completion`, not committed or pushed.
+
+### November 13 2026 finer ramp sweep and lane-change overrun fix
+
+- Finer sweep (260/270/290/300 m) found 45 ramp-end violations at 290 m: the same
+  9 cut-in/low/hard scenarios for every manager. Cause (introduced by the next-gap
+  fallback): a lane change eligible at constant speed was followed by gap-tracking
+  acceleration, overrunning the ramp end by about 1.5 m. Fix: while a lane change is in
+  progress on the ramp, speed is capped so the remaining lateral move finishes on the
+  ramp. Regression test for the exact case; a predicate test replaces a fixture that
+  had relied on the overrun. 227 tests and lint pass.
+- Full rerun of all lengths after the fix (`results/raw/ramp-sweep-v2/`), 972 scenarios
+  each, 0 collisions and 0 ramp-end violations for every manager at every length:
+
+  | Ramp end | B2 differs | B1 merges | B2 merges | B2 agreement | B2 own cancels | B3 forced commits | Differing disturbances |
+  |---|---:|---:|---:|---:|---:|---:|---|
+  | 240 m | 0.0% | 432 | 432 | 378 | 23 | 123 | none |
+  | 260 m | 3.9% | 486 | 496 | 351 | 61 | 78 | braking 20, intent 18 |
+  | 270 m | 4.6% | 504 | 513 | 354 | 91 | 36 | braking 31, intent 14 |
+  | 280 m | 8.1% | 459 | 494 | 355 | 125 | 7 | braking 43, intent 36 |
+  | 290 m | 10.7% | 459 | 504 | 353 | 150 | 6 | braking 51, intent 53 |
+  | 300 m | 10.8% | 486 | 527 | 356 | 174 | 0 | braking 48, intent 57 |
+  | 320 m | 2.6% | 486 | 486 | 380 | 25 | 0 | intent 25 |
+  | 400 m | 0.0% | 648 | 648 | 351 | 0 | 0 | none |
+
+- Interpretation: decisions matter in a band of about 260-300 m (peak 290-300 m), only for
+  braking and intent mismatch; cut-ins never leave a decision window. 240 m and 400 m
+  are no-decision controls. Earlier ramp-sweep numbers (pre-fix) are superseded.
+- Proposed protocol (not yet adopted): train on {260, 270, 290, 300} m, hold out 280 m
+  (interpolation), report 320 m as an edge case and 240/400 m as controls, per length.
+- Publication: local branch `fix/predictor-no-completion`, not committed or pushed.
+
+### November 18 2026 ramp-length protocol adopted
+
+- Decision: train/tune on 260, 270, 290, 300 m; hold out 280 m; 320 m edge case;
+  240 and 400 m no-decision controls; report per length. Recorded in
+  EXPERIMENT_PROTOCOL.md before any final-test inspection.
+- Work completed: `ramp_end_m` is a per-episode reset option (reverts to the base when
+  omitted; must lie beyond the merge point). `rene.envs.scenarios` defines the length
+  sets and `ramp_role`; `TrainingScenarios` samples only training lengths and rejects
+  evaluation-only lengths, including through options. The manifest crosses all eight
+  lengths with `ramp_role`; `reset_options` strips reporting labels; `evaluate.py` logs
+  `ramp_end_m`/`ramp_role`. `final_eval.yaml` budget 7,680 episodes (192 x 8 x 5).
+  `train.py` records `training_ramp_ends_m` in checkpoint metadata.
+- Validation: 231 tests and lint pass (training lengths only, rejection paths,
+  per-episode revert, manifest roles/unique IDs/option stripping). Development
+  smokes on non-reserved seeds: 32-episode evaluation for one_shot and paper-adapted
+  across all eight lengths (0 collisions/ramp-end violations); 128-step PPO preflight
+  on input v7; a 256-step, 2-subprocess development train with ramp sampling saved
+  metadata recording the training lengths (scratch output, not a research model).
+- Not done: no final-seed evaluation, no research training, no GPU use. B3 review and
+  baseline freeze remain before PPO.
+- Publication: local branch `fix/predictor-no-completion`, not committed or pushed.
+
+### November 18 2026 B3 (matched heuristic) review
+
+- Finding: B3 renegotiates in every episode, always RENEGOTIATE_ADVANCE at t = 0, with
+  the accepted plan predicted SAFE_COMPLETION and before any disturbance (192/192
+  traced episodes on training lengths). The rule picks any candidate predicted to
+  finish 0.05 s sooner; with one renegotiation allowed, B3 spends it before anything
+  goes wrong. This departs from the revised plan's B3 ranking (TTC/gap margin first).
+- Comparison (2,304 scenarios: training lengths 260/270/290/300 m, densities, four
+  disturbances, delay 0/100/800 ms, loss 0/0.2, moderate/hard, triggers 3.5/5 s, dev seeds
+  42-43; 0 collisions/ramp-end violations for all):
+
+  | Manager | Agreement merges | Total merges | Renegotiations | After a disturbance | Mean agreement merge time |
+  |---|---:|---:|---:|---:|---:|
+  | B2 | 670 | 972 | 0 | 0 | 9.28 s |
+  | B3 current (advance at t = 0) | 855 | 1,065 | 2,304 | 0 | 8.54 s |
+  | B3 reactive prototype | 687 | 972 | 24 | 24 | 9.23 s |
+
+  The reactive prototype renegotiates only when the accepted plan is not predicted
+  SAFE_COMPLETION, choosing the earliest feasible candidate (ties to delay); it lives in
+  the scratch comparison script, not the repository.
+- Interpretation: "advance by 1 s at t = 0" is a free improvement on the initial plan in
+  every episode; current B3's gains come from merging before the fixed-time disturbance,
+  not from reacting to it. Once the plan is predicted to fail, a feasible timing candidate
+  almost never exists (24/2,304). A PPO manager would learn the same free improvement,
+  so B2 -> B3 -> B4 would mostly measure initial-plan optimization.
+- Open decision: how the initial plan and renegotiation availability should be defined
+  so that renegotiation measures lifecycle management (see options in the session
+  report). B3 is not frozen.
+- Publication: local branch `fix/predictor-no-completion`, not committed or pushed.
+
+### November 18 2026 B3 fix, action masking, benchmark and baseline freeze
+
+- B3 free-advance removed: merge zone start 140 -> 175 m, so the nominal plan is
+  already the earliest feasible timing (merge point and ramp ends unchanged). Three
+  timing-mechanics tests pinned to the old 140 m zone; new test that advance is not
+  free by default. Sweep v3 (`results/raw/ramp-sweep-v3/`) reproduces the v2 decision
+  band exactly with 0 collisions/ramp-end violations; B3 now equals B2 in 100% of
+  scenarios (timing renegotiation adds nothing once the free advance is removed).
+- Action masking: `MergeLifecycleEnv.action_masks()` (continue/cancel always; timing
+  revisions only when feasible; next-gap/swap never). `train.py`/`evaluate.py` use
+  sb3-contrib MaskablePPO (`algorithm: maskable_ppo`, recorded in metadata); new
+  dependency `sb3-contrib`. Tests: mask equals shared feasibility flags; masked random
+  play never triggers an infeasible-renegotiation override. 234 tests and lint pass.
+- Benchmark (`scripts/benchmark_training.py`, Ryzen 7 3700X, RTX 3060 Ti, torch
+  2.15.0+cu132 in a separate short-path venv because of Windows path length):
+  CPU 143/198/208 vs CUDA 123/176/182 transitions/s at 4/8/12 workers. Decision: CPU,
+  8 subprocess workers. GPU not used for training.
+- Baseline freeze written (`docs/BASELINE_FREEZE.md`). Scripts added:
+  `measure_decision_window.py` (sweep/shield measurement used for the cited numbers),
+  `benchmark_training.py`, `learning_curve.py` (pilot to choose the step budget on
+  validation scenarios: training lengths, dev seeds 42-43, never final seeds).
+- Git author on this machine is `JoaoLucasVeras-ImpacterAI` (machine config, not changed).
+
 ## Publication snapshot
 
 At the October 1 push, the research documents and then-current roadmap were
