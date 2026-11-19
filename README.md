@@ -21,6 +21,18 @@ The minimum viable system will use `highway-env` or SUMO to simulate a freeway o
 
 https://github.com/JoaoLucasVeras/ReNe
 
+## Final result (November 18 2026)
+
+The final comparison is complete and reported as is: see
+[the final results](docs/FINAL_RESULTS.md). On reserved test seeds (7680 episodes per
+manager) every lifecycle manager completes the same share of merges (49.1%) with 0
+collisions and 0 ramp-end violations. Never cancelling voluntarily (B1) keeps the most
+agreements (41.5%); the learned MaskablePPO manager (40.0%) is significantly better
+than the paper-adapted cancellation rule (38.3%) but not better than B1; timing
+renegotiation (B3) adds nothing. In this simulator, cancellation timing does not change
+whether a merge succeeds. Baselines were frozen before the test seeds were run
+([baseline freeze](docs/BASELINE_FREEZE.md)).
+
 ## Project progress and next steps
 
 Read [the project explained and its roadmap](docs/PROJECT_OVERVIEW_AND_ROADMAP.md)

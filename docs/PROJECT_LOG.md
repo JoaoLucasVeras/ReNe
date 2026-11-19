@@ -20,6 +20,10 @@ information. Learning does not have to win for the project to produce a useful r
 
 ## Current status
 
+- **Final (November 18 2026):** study complete; negative result reported as is
+  (user decision). Results: [FINAL_RESULTS.md](FINAL_RESULTS.md). Reserved test seeds
+  1001-1005 are now used; any redesign needs new test seeds and a new freeze.
+  Entries below are the historical record.
 - Steps 1 and 2: paper selection and reproduction specification are documented.
   Instructor approval of the adaptation was confirmed November 12. Deadline is early December.
 - Step 3: CPU-only audit completed; the M2 simulator-validation gate has **not passed**.
