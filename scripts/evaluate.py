@@ -41,7 +41,11 @@ def main() -> None:
     if episode_budget > len(manifest):
         parser.error("episode budget exceeds the unique condition/seed manifest")
     manifest = manifest[:episode_budget]
-    output = make_run_dir(exp["output_dir"], args.manager)
+    # Learned runs are named by checkpoint folder so parallel seeds never collide.
+    prefix = args.manager
+    if args.manager == "learned":
+        prefix = f"learned-{Path(args.model).parent.name}"
+    output = make_run_dir(exp["output_dir"], prefix)
     fingerprint = source_fingerprint()
     if args.manager == "learned":
         metadata_path = Path(args.model).with_name("metadata.json")

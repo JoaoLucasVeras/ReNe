@@ -1,0 +1,46 @@
+# ReNe final comparison (November 18 2026)
+
+Final-test seeds 1001-1005 (first use), 7680 episodes per manager (192 conditions x 8
+ramp lengths x 5 seeds); B4 = five MaskablePPO models (training seeds 1-5, 300k steps
+each), 38,400 episodes. Frozen definitions: BASELINE_FREEZE.md. Raw runs:
+`results/raw/final/`; report: `results/summaries/final_report.json`
+(`scripts/final_report.py`). Single source fingerprint and input contract v7.
+
+## Overall rates
+
+| Manager | Merges completed | Via agreement | Canceled | Collisions | Ramp-end |
+|---|---:|---:|---:|---:|---:|
+| B1 `one_shot` | 49.06% | **41.46%** | 54.17% | 0 | 0 |
+| B2 `paper_cancel_merge_adapted` | 49.06% | 38.33% | 58.37% | 0 | 0 |
+| B3 `matched_heuristic` | 49.06% | 38.33% | 58.37% | 0 | 0 |
+| B4 PPO (mean of 5) | 49.06% | 39.97% | 56.48% | 0 | 0 |
+| `rule_cancel` (prototype) | 42.49% | 32.64% | 63.91% | 0 | 0 |
+
+PPO per seed, via agreement: 41.2, 38.7, 38.1, 40.9, 41.0%.
+
+## Paired differences (percentage points, 95% hierarchical bootstrap)
+
+| Comparison | Merges completed | Via agreement | Canceled |
+|---|---|---|---|
+| B4 - B1 | 0.00 [-0.02, 0.00] | -1.49 [-2.70, -0.38] | +2.31 [+0.70, +4.08] |
+| B4 - B2 | 0.00 [-0.02, 0.00] | +1.64 [+0.42, +2.76] | -1.89 [-3.55, -0.16] |
+| B2 - B1 | 0.00 | -3.12 [-3.54, -2.76] | +4.21 [+3.76, +4.66] |
+| B3 - B2 | 0.00 | 0.00 | 0.00 |
+
+## Findings
+
+1. No lifecycle manager changes whether a merge completes: B1-B4 complete exactly the
+   same share of episodes at every ramp length and role (one PPO episode differs).
+   Failures are set by the disturbance (none 100%, intent mismatch 62.5%, braking
+   29.6%, cut-in 4.2%), not by the cancel decision.
+2. Voluntary cancellation only converts agreement merges into fallback merges or
+   non-completions; B1 (never cancel voluntarily) keeps the most agreements.
+3. PPO learns a policy between B1 and B2: significantly better than the paper-adapted
+   rule (B2) on agreement completion, significantly worse than B1.
+4. Timing renegotiation (B3) adds nothing over B2, as predicted in the freeze.
+5. Generalization: on held-out 280 m PPO keeps 41.7% via agreement (B1 43.3%, B2
+   37.9%); edge/control lengths have no decision window and all managers tie.
+6. 0 collisions and 0 ramp-end violations for every manager (collapsed intervals do
+   not bound unseen risk).
+
+Scope: synthetic single-lane-pair simulator, idealized sensing, abstract V2X.

@@ -612,6 +612,16 @@ not rerun for this log.
   than the RTX 3060 Ti for this MLP). BASELINE_FREEZE.md updated.
 - Next: train seeds 1-5, then final evaluation on seeds 1001-1005 (7680 episodes/manager).
 
+### November 18 2026 final training and final comparison
+
+- Trained B4: five MaskablePPO models (seeds 1-5, 300k steps, CPU 8 workers), all exit 0.
+- Final evaluation on reserved seeds 1001-1005 (first use): 7680 episodes per manager.
+  Three parallel learned runs collided on a same-second output folder; evaluate.py now
+  names learned runs by checkpoint folder and the three were rerun (no data lost).
+- Result (docs/FINAL_RESULTS.md): all managers complete 49.06% of merges; B1 keeps the
+  most agreements (41.5%); PPO 40.0% (> B2 38.3%, < B1); B3 = B2; 0 collisions/ramp-end.
+- Analysis: scripts/final_report.py -> results/summaries/final_report.json.
+
 ## Publication snapshot
 
 At the October 1 push, the research documents and then-current roadmap were
