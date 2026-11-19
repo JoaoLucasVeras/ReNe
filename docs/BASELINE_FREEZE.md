@@ -32,6 +32,13 @@ it is not a literature baseline.
   invalidation persistence 0.6 s; one renegotiation per episode.
 - Fallback: next-gap perception fallback with nominal merge location, gap-center
   tracking, closing-gap rejection, scoped stopping reserve, lane-change finish cap.
+- Agreement-only cooperation (added Nov 18 after pilots v1/v2 learned "always
+  cancel"): while it holds the agreement the rear peer yields to the ego as a virtual
+  leader (max 2 m/s^2 decel, floor 15 m/s) and stops once it has received the release.
+- Traffic gap closing: non-cooperating traffic closes to its natural headway
+  (low 2.2 s, medium 1.5 s, high 1.2 s) at desired speed + 2 m/s, so merge-sized gaps
+  do not persist without an agreement. The prediction replica assumes the rear peer
+  stops yielding immediately on cancel.
 - Sensing: forward 60 m, rearward 120 m; front acceleration received in beacons;
   intruder lateral speed from a 0.1 s difference.
 - Reward (per component, unchanged since the November 12 handoff): success +20;
@@ -44,29 +51,39 @@ it is not a literature baseline.
   gamma 0.99, GAE 0.95, clip 0.2, entropy 0.01; observation normalization saved with
   each model; training seeds 1-5; ramp lengths sampled from the training set only.
 
-## Development pilot supporting the freeze (sweep v3, after all fixes)
+## Development pilot supporting the freeze (sweep v5, after cooperation + gap closing)
 
 972 paired scenarios per length (seeds 42-44; three densities; four disturbances;
 delay 0/100/800 ms; loss 0/0.2/0.5; mild/moderate/hard; trigger 5 s).
 0 collisions and 0 ramp-end violations for B1, B2, B3 and both random policies at
 every length.
 
-| Ramp end | B2 differs from B1 | B1 merges | B2 merges | B2 agreement | B2 own cancels | B3 = B2 |
+| Ramp end | B1 merges | B1 agreement | B2 merges | B2 agreement | B2 cancels | random_valid merges |
 |---|---:|---:|---:|---:|---:|---:|
-| 240 m | 0.0% | 432 | 432 | 378 | 23 | 100% |
-| 260 m | 3.9% | 486 | 496 | 351 | 61 | 100% |
-| 270 m | 4.6% | 504 | 513 | 354 | 91 | 100% |
-| 280 m | 8.1% | 459 | 494 | 355 | 125 | 100% |
-| 290 m | 10.7% | 459 | 504 | 353 | 150 | 100% |
-| 300 m | 10.8% | 486 | 527 | 356 | 174 | 100% |
-| 320 m | 2.6% | 486 | 486 | 380 | 25 | 100% |
-| 400 m | 0.0% | 648 | 648 | 351 | 0 | 100% |
+| 240 m | 426 | 378 | 426 | 378 | 567 | 1 |
+| 260 m | 518 | 351 | 513 | 351 | 508 | 95 |
+| 270 m | 495 | 360 | 495 | 354 | 539 | 78 |
+| 280 m | 495 | 423 | 495 | 396 | 542 | 69 |
+| 290 m | 489 | 441 | 487 | 415 | 551 | 70 |
+| 300 m | 489 | 459 | 487 | 422 | 550 | 69 |
+| 320 m | 460 | 405 | 460 | 395 | 577 | 68 |
+| 400 m | 504 | 351 | 504 | 351 | 621 | 71 |
+
+Agreements now carry value: a policy that abandons them (random_valid) completes
+~70/972 merges versus ~490 for B1. B2's own cancellations no longer gain merges.
+
+PPO pilot v3 (seed 101, 768 validation scenarios on training lengths, dev seeds
+42-43): B2 262 merges / 220 agreement; PPO 264 / 232 from 106k steps on, unchanged at
+266k; 0 collisions, 0 ramp-end. Final budget: 300k steps per seed, 8 CPU workers
+(`configs/experiments/train_final.yaml`).
 
 ## Known limitations carried into the final comparison
 
 - B3 equals B2 in every pilot scenario: once the free "advance at t = 0" was removed,
   a +/-1 s timing revision never improved a predicted outcome. The B2 -> B3 comparison
   is expected to show no value from timing renegotiation in this simulator.
+- With cooperation and gap closing, B2 never completes more merges than B1 and keeps
+  fewer agreements at 270-320 m: its early cancellations forgo the rear peer's yield.
 - Cut-ins never open a decision window at any tested length; for cut-ins the study
   measures fallback quality only.
 - Headway below 0.8 s still occurs in adversarial cut-in exposure for every manager

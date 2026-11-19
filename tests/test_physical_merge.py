@@ -255,7 +255,8 @@ def test_follower_starts_one_density_gap_behind_rear_and_is_not_a_v2x_peer():
 
 
 def test_early_cancel_uses_next_gap_behind_rear_without_collision():
-    env = make_env()
+    # Training length and light traffic: a natural next gap still fits.
+    env = make_env(ramp_end_m=300.0, traffic_density="low")
     # Shrink the original slot below the safe size; the rear/follower gap is untouched.
     env.front_x_m = env.rear_x_m + 4.5 + 20
     result = finish(env, ManagerAction.CANCEL)
@@ -268,7 +269,7 @@ def test_early_cancel_uses_next_gap_behind_rear_without_collision():
 
 
 def test_fallback_keeps_nominal_merge_location():
-    env = make_env()
+    env = make_env(ramp_end_m=300.0)  # training length: fallback can reach gap speed
     env._apply_lifecycle_action(ManagerAction.CANCEL)
     started_x = None
     while not env.completed and env.time_s < env.config["duration_s"]:
@@ -329,7 +330,8 @@ def test_early_nominal_fallback_prediction_sees_next_gap():
     from rene.envs.manager_inputs import decode
     from rene.prediction.rollouts import predict
 
-    env = make_env()
+    # Training length, light traffic, no gap closing: isolates rear sensing.
+    env = make_env(ramp_end_m=300.0, traffic_density="low", traffic_gap_closing=False)
     values = decode(env._observation())
     assert values["follower_detected"] == 1.0
     assert predict(values, env.config, fallback=True).status == "SAFE_COMPLETION"
@@ -395,3 +397,65 @@ def test_lane_change_in_progress_is_speed_capped_to_finish_on_ramp():
     env.ramp_speed_mps = 8.0
     env._advance_vehicles()
     assert env.ramp_speed_mps <= 10.0 / (1.8 / 1.8 + env.config["dt_s"]) + 1e-9
+
+
+def test_rear_peer_yields_only_while_it_holds_the_agreement():
+    env = make_env()
+    env.ramp_speed_mps = 15.0  # ego slower than the slot: the rear peer must ease off
+    assert env._rear_cooperating()
+    yielding = env._rear_following_accel(env.config["dt_s"])
+    assert yielding < 0.0
+    assert yielding >= -env.config["rear_cooperation_max_decel_mps2"] - 1e-9
+    env.communication.session.remote_released_at_s["mainline_rear"] = env.time_s
+    assert not env._rear_cooperating()
+    assert env._rear_following_accel(env.config["dt_s"]) >= 0.0
+    off = make_env(rear_peer_cooperation=False)
+    off.ramp_speed_mps = 15.0
+    assert not off._rear_cooperating()
+
+
+def test_rear_peer_never_slows_below_floor_for_the_ego():
+    env = make_env()
+    env.ramp_speed_mps = 0.0
+    env.rear_speed_mps = env.config["rear_cooperation_min_speed_mps"]
+    assert env._rear_following_accel(env.config["dt_s"]) >= 0.0
+
+
+def test_follower_never_cooperates():
+    env = make_env()
+    env.ramp_speed_mps = 5.0
+    env.follower_x_m = env.ramp_x_m - 20.0
+    env.rear_x_m = env.ramp_x_m + 300.0  # follower is directly behind the ramp ego
+    accel = env._following_accel(env.follower_x_m, env.follower_speed_mps, 0.2)
+    assert accel >= 0.0  # no virtual leader for a non-connected vehicle
+
+
+def test_ordinary_traffic_closes_to_natural_headway_without_an_agreement():
+    env = make_env(traffic_density="high")
+    start = env.rear_x_m - env.follower_x_m
+    for _ in range(60):  # 12 s of follower driving behind the rear peer
+        env._advance_vehicles()
+        env.time_s += env.config["dt_s"]
+    natural = env.config["natural_headway_s"]["high"] * env.follower_speed_mps + 4.5
+    assert env.rear_x_m - env.follower_x_m < start - 10.0
+    assert env.rear_x_m - env.follower_x_m >= natural - 1.0
+
+
+def test_rear_peer_holds_the_gap_only_while_agreed():
+    held = make_env(traffic_density="high")
+    released = make_env(traffic_density="high")
+    released.communication.session.remote_released_at_s["mainline_rear"] = 0.0
+    for env in (held, released):
+        for _ in range(20):
+            env._advance_vehicles()
+            env.time_s += env.config["dt_s"]
+    assert released.rear_x_m > held.rear_x_m + 2.0  # released rear closes up on the front
+
+
+def test_gap_closing_can_be_disabled():
+    env = make_env(traffic_density="high", traffic_gap_closing=False)
+    start = env.rear_x_m - env.follower_x_m
+    for _ in range(30):
+        env._advance_vehicles()
+        env.time_s += env.config["dt_s"]
+    assert env.rear_x_m - env.follower_x_m == pytest.approx(start, abs=0.5)

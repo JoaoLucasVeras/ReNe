@@ -578,6 +578,40 @@ not rerun for this log.
   validation scenarios: training lengths, dev seeds 42-43, never final seeds).
 - Git author on this machine is `JoaoLucasVeras-ImpacterAI` (machine config, not changed).
 
+### November 18 2026 PPO pilot: agreements have no value (training paused)
+
+- Pilot MaskablePPO (dev seed 101, 8 CPU workers, 426k steps; validation 768 scenarios
+  on training lengths, dev seeds 42-43, never final seeds): from about 100k steps the
+  policy cancels in every validation episode (768/768) and never completes an agreement,
+  yet merges more vehicles than B2 (344 vs 299; B2 210 agreement merges). 0 collisions
+  and 0 ramp-end violations. Curve: `results/raw/learning-curve/` (Git-ignored).
+- Cause: in this simulator the accepted agreement changes nothing physically. Peers
+  only reserve the ego's timing; the rear peer does not yield or hold the gap. The
+  perception fallback can use the same or the next gap, so abandoning the agreement
+  immediately is optimal under the reward (agreement and fallback completions both +20).
+- Consequence: training B4 now would answer "always cancel", which does not address
+  agreement lifecycle management. Final PPO training is paused pending a design
+  decision: (1) cooperative behaviour that only an active agreement provides (e.g. the
+  rear peer holds the gap); (2) a reward premium for agreement completion; or (3) report
+  the finding as the result.
+
+### November 18 2026 cooperative rear peer, traffic gap closing, final training start
+
+- Goal and scope: give agreements a value only they provide, after PPO pilots v1/v2
+  cancelled 768/768 (fallback 9.63 s vs agreement 9.42 s mean merge time).
+- Work completed: rear peer yields while holding the agreement (user decision:
+  "Cooperative rear car"); non-cooperating traffic closes to natural headway
+  (`traffic_gap_closing`, `natural_headway_s`, `gap_closing_margin_mps`); fallback keeps
+  the stopping reserve until the lane change starts (fixes an overrun cooperation
+  exposed). Files: merge_lifecycle_env.py, rollouts.py, configs/env/default.yaml, tests.
+- Validation: 240 tests pass, ruff clean. Sweep v5 (results/raw/ramp-sweep-v5): 0
+  collisions / 0 ramp-end at all 8 lengths; random_valid ~70 merges vs B1 ~490. Pilot v3
+  (results/raw/learning-curve-v3): PPO 264 merges / 232 agreement vs B2 262 / 220,
+  plateau from 106k steps.
+- Decisions: final budget 300k steps x seeds 1-5, CPU 8 workers (benchmark: CPU faster
+  than the RTX 3060 Ti for this MLP). BASELINE_FREEZE.md updated.
+- Next: train seeds 1-5, then final evaluation on seeds 1001-1005 (7680 episodes/manager).
+
 ## Publication snapshot
 
 At the October 1 push, the research documents and then-current roadmap were

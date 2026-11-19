@@ -7,6 +7,7 @@ No live environment, RNG, future disturbance, or hidden state is cloned.
 from dataclasses import dataclass
 from itertools import combinations
 
+from rene.agreements.communication import PEERS
 from rene.agreements.state import AgreementState
 from rene.disturbances.braking import BrakingPulse
 from rene.disturbances.cut_in import CutInTrajectory
@@ -123,6 +124,8 @@ def predict(
     sim.fallback_active = fallback
     if fallback:
         sim.agreement.transition(AgreementState.CANCELED, now)
+        # Conservative: assume the rear peer stops yielding as soon as the ego cancels.
+        sim.communication.session.remote_released_at_s[PEERS[1]] = now
     accel = values["front_accel_mps2"]
     if abs(accel) > ACCEL_DEADBAND_MPS2:
         # Received front acceleration persists for a declared hold, then constant

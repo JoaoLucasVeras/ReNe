@@ -22,6 +22,12 @@ environment:
   max_renegotiations: 1
   enable_timing_revisions: true
   fallback_next_gap: true
+  rear_peer_cooperation: true
+  rear_cooperation_max_decel_mps2: 2.0
+  rear_cooperation_min_speed_mps: 15.0
+  traffic_gap_closing: true
+  natural_headway_s: {low: 2.2, medium: 1.5, high: 1.2}
+  gap_closing_margin_mps: 2.0
   fallback_gap_gain_per_s: 0.5
   beacon_interval_s: 0.1
   cancel_retry_s: 0.1
