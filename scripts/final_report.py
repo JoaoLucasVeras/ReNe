@@ -13,7 +13,6 @@ import json
 from pathlib import Path
 
 import pandas as pd
-
 from paired_analysis import bootstrap_difference
 
 METRICS = ("completed_merge", "agreement_completion", "canceled", "collision",
