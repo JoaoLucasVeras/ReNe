@@ -123,7 +123,8 @@ def main() -> None:
     for i in range(length):
         sheet = Image.new("RGB", (width, title_h + height * len(panels)), "white")
         draw = ImageDraw.Draw(sheet)
-        draw.text((8, 6), f"Same scenario {scenario['scenario_id']}: {scenario['ramp_end_m']:.0f} m "
+        draw.text((8, 6), f"Same scenario {scenario['scenario_id']}: "
+                  f"{scenario['ramp_end_m']:.0f} m "
                   f"ramp ({scenario['ramp_role']}), {scenario['traffic_density']} traffic, "
                   f"disturbance = {scenario['disturbance_type']}", fill=INK)
         draw.text((8, 22), "Orange: merging car | Blue: deal partners | Grey: other traffic | "
