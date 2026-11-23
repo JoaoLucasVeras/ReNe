@@ -1,0 +1,13 @@
+{
+  "purpose": "cpu_api_smoke_not_research_training",
+  "timesteps": 128,
+  "elapsed_s": 4.84469050000007,
+  "transitions_per_s": 26.42067640853387,
+  "device": "cpu",
+  "cuda_available_on_this_machine": false,
+  "torch_version": "2.15.0+cpu",
+  "input_version": "lifecycle-prediction-v7",
+  "features": 58,
+  "research_training_ready": false,
+  "reason": "M2/controller/scenario validation and frozen baseline review remain open"
+}

@@ -1,0 +1,673 @@
+{
+  "episodes_per_manager": {
+    "learned": 38400,
+    "matched_heuristic": 7680,
+    "one_shot": 7680,
+    "paper_cancel_merge_adapted": 7680,
+    "rule_cancel": 7680
+  },
+  "learned_seeds": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "overall": {
+    "learned": {
+      "completed_merge": 0.4906,
+      "agreement_completion": 0.3997,
+      "canceled": 0.5648,
+      "collision": 0.0,
+      "ramp_end_violation": 0.0
+    },
+    "matched_heuristic": {
+      "completed_merge": 0.4906,
+      "agreement_completion": 0.3833,
+      "canceled": 0.5837,
+      "collision": 0.0,
+      "ramp_end_violation": 0.0
+    },
+    "one_shot": {
+      "completed_merge": 0.4906,
+      "agreement_completion": 0.4146,
+      "canceled": 0.5417,
+      "collision": 0.0,
+      "ramp_end_violation": 0.0
+    },
+    "paper_cancel_merge_adapted": {
+      "completed_merge": 0.4906,
+      "agreement_completion": 0.3833,
+      "canceled": 0.5837,
+      "collision": 0.0,
+      "ramp_end_violation": 0.0
+    },
+    "rule_cancel": {
+      "completed_merge": 0.4249,
+      "agreement_completion": 0.3264,
+      "canceled": 0.6391,
+      "collision": 0.0,
+      "ramp_end_violation": 0.0
+    }
+  },
+  "by_ramp_end_m": {
+    "completed_merge": {
+      "240.0": {
+        "learned": 0.4167,
+        "matched_heuristic": 0.4167,
+        "one_shot": 0.4167,
+        "paper_cancel_merge_adapted": 0.4167,
+        "rule_cancel": 0.3281
+      },
+      "260.0": {
+        "learned": 0.5,
+        "matched_heuristic": 0.5,
+        "one_shot": 0.5,
+        "paper_cancel_merge_adapted": 0.5,
+        "rule_cancel": 0.4521
+      },
+      "270.0": {
+        "learned": 0.4998,
+        "matched_heuristic": 0.5,
+        "one_shot": 0.5,
+        "paper_cancel_merge_adapted": 0.5,
+        "rule_cancel": 0.4365
+      },
+      "280.0": {
+        "learned": 0.5,
+        "matched_heuristic": 0.5,
+        "one_shot": 0.5,
+        "paper_cancel_merge_adapted": 0.5,
+        "rule_cancel": 0.4344
+      },
+      "290.0": {
+        "learned": 0.5,
+        "matched_heuristic": 0.5,
+        "one_shot": 0.5,
+        "paper_cancel_merge_adapted": 0.5,
+        "rule_cancel": 0.4344
+      },
+      "300.0": {
+        "learned": 0.5,
+        "matched_heuristic": 0.5,
+        "one_shot": 0.5,
+        "paper_cancel_merge_adapted": 0.5,
+        "rule_cancel": 0.4323
+      },
+      "320.0": {
+        "learned": 0.425,
+        "matched_heuristic": 0.425,
+        "one_shot": 0.425,
+        "paper_cancel_merge_adapted": 0.425,
+        "rule_cancel": 0.3688
+      },
+      "400.0": {
+        "learned": 0.5833,
+        "matched_heuristic": 0.5833,
+        "one_shot": 0.5833,
+        "paper_cancel_merge_adapted": 0.5833,
+        "rule_cancel": 0.5125
+      }
+    },
+    "agreement_completion": {
+      "240.0": {
+        "learned": 0.4044,
+        "matched_heuristic": 0.4167,
+        "one_shot": 0.4167,
+        "paper_cancel_merge_adapted": 0.4167,
+        "rule_cancel": 0.3281
+      },
+      "260.0": {
+        "learned": 0.321,
+        "matched_heuristic": 0.3333,
+        "one_shot": 0.3333,
+        "paper_cancel_merge_adapted": 0.3333,
+        "rule_cancel": 0.2625
+      },
+      "270.0": {
+        "learned": 0.3594,
+        "matched_heuristic": 0.3625,
+        "one_shot": 0.3833,
+        "paper_cancel_merge_adapted": 0.3625,
+        "rule_cancel": 0.301
+      },
+      "280.0": {
+        "learned": 0.4167,
+        "matched_heuristic": 0.3792,
+        "one_shot": 0.4333,
+        "paper_cancel_merge_adapted": 0.3792,
+        "rule_cancel": 0.3417
+      },
+      "290.0": {
+        "learned": 0.464,
+        "matched_heuristic": 0.4042,
+        "one_shot": 0.5,
+        "paper_cancel_merge_adapted": 0.4042,
+        "rule_cancel": 0.3938
+      },
+      "300.0": {
+        "learned": 0.4831,
+        "matched_heuristic": 0.4208,
+        "one_shot": 0.5,
+        "paper_cancel_merge_adapted": 0.4208,
+        "rule_cancel": 0.3938
+      },
+      "320.0": {
+        "learned": 0.4158,
+        "matched_heuristic": 0.4167,
+        "one_shot": 0.4167,
+        "paper_cancel_merge_adapted": 0.4167,
+        "rule_cancel": 0.3281
+      },
+      "400.0": {
+        "learned": 0.3333,
+        "matched_heuristic": 0.3333,
+        "one_shot": 0.3333,
+        "paper_cancel_merge_adapted": 0.3333,
+        "rule_cancel": 0.2625
+      }
+    }
+  },
+  "by_ramp_role": {
+    "completed_merge": {
+      "control": {
+        "learned": 0.5,
+        "matched_heuristic": 0.5,
+        "one_shot": 0.5,
+        "paper_cancel_merge_adapted": 0.5,
+        "rule_cancel": 0.4203
+      },
+      "edge": {
+        "learned": 0.425,
+        "matched_heuristic": 0.425,
+        "one_shot": 0.425,
+        "paper_cancel_merge_adapted": 0.425,
+        "rule_cancel": 0.3688
+      },
+      "heldout": {
+        "learned": 0.5,
+        "matched_heuristic": 0.5,
+        "one_shot": 0.5,
+        "paper_cancel_merge_adapted": 0.5,
+        "rule_cancel": 0.4344
+      },
+      "training": {
+        "learned": 0.4999,
+        "matched_heuristic": 0.5,
+        "one_shot": 0.5,
+        "paper_cancel_merge_adapted": 0.5,
+        "rule_cancel": 0.4388
+      }
+    },
+    "agreement_completion": {
+      "control": {
+        "learned": 0.3689,
+        "matched_heuristic": 0.375,
+        "one_shot": 0.375,
+        "paper_cancel_merge_adapted": 0.375,
+        "rule_cancel": 0.2953
+      },
+      "edge": {
+        "learned": 0.4158,
+        "matched_heuristic": 0.4167,
+        "one_shot": 0.4167,
+        "paper_cancel_merge_adapted": 0.4167,
+        "rule_cancel": 0.3281
+      },
+      "heldout": {
+        "learned": 0.4167,
+        "matched_heuristic": 0.3792,
+        "one_shot": 0.4333,
+        "paper_cancel_merge_adapted": 0.3792,
+        "rule_cancel": 0.3417
+      },
+      "training": {
+        "learned": 0.4069,
+        "matched_heuristic": 0.3802,
+        "one_shot": 0.4292,
+        "paper_cancel_merge_adapted": 0.3802,
+        "rule_cancel": 0.3378
+      }
+    }
+  },
+  "learned_by_seed": {
+    "1": {
+      "completed_merge": 0.4906,
+      "agreement_completion": 0.412,
+      "canceled": 0.5443,
+      "collision": 0.0,
+      "ramp_end_violation": 0.0
+    },
+    "2": {
+      "completed_merge": 0.4906,
+      "agreement_completion": 0.3867,
+      "canceled": 0.5835,
+      "collision": 0.0,
+      "ramp_end_violation": 0.0
+    },
+    "3": {
+      "completed_merge": 0.4905,
+      "agreement_completion": 0.3807,
+      "canceled": 0.591,
+      "collision": 0.0,
+      "ramp_end_violation": 0.0
+    },
+    "4": {
+      "completed_merge": 0.4906,
+      "agreement_completion": 0.4091,
+      "canceled": 0.556,
+      "collision": 0.0,
+      "ramp_end_violation": 0.0
+    },
+    "5": {
+      "completed_merge": 0.4906,
+      "agreement_completion": 0.41,
+      "canceled": 0.5492,
+      "collision": 0.0,
+      "ramp_end_violation": 0.0
+    }
+  },
+  "paired": [
+    {
+      "reference": "one_shot",
+      "candidate": "learned",
+      "metric": "completed_merge",
+      "mean_difference": -2.604166666666667e-05,
+      "ci95_low": -0.00015625,
+      "ci95_high": 0.0,
+      "models": 5,
+      "scenarios": 7680
+    },
+    {
+      "reference": "one_shot",
+      "candidate": "learned",
+      "metric": "agreement_completion",
+      "mean_difference": -0.014869791666666667,
+      "ci95_low": -0.026986979166666664,
+      "ci95_high": -0.0037747395833333344,
+      "models": 5,
+      "scenarios": 7680
+    },
+    {
+      "reference": "one_shot",
+      "candidate": "learned",
+      "metric": "canceled",
+      "mean_difference": 0.023125,
+      "ci95_low": 0.0069993489583333336,
+      "ci95_high": 0.04078125,
+      "models": 5,
+      "scenarios": 7680
+    },
+    {
+      "reference": "one_shot",
+      "candidate": "learned",
+      "metric": "collision",
+      "mean_difference": 0.0,
+      "ci95_low": 0.0,
+      "ci95_high": 0.0,
+      "models": 5,
+      "scenarios": 7680
+    },
+    {
+      "reference": "one_shot",
+      "candidate": "learned",
+      "metric": "ramp_end_violation",
+      "mean_difference": 0.0,
+      "ci95_low": 0.0,
+      "ci95_high": 0.0,
+      "models": 5,
+      "scenarios": 7680
+    },
+    {
+      "reference": "one_shot",
+      "candidate": "matched_heuristic",
+      "metric": "completed_merge",
+      "mean_difference": 0.0,
+      "ci95_low": 0.0,
+      "ci95_high": 0.0,
+      "models": 1,
+      "scenarios": 7680
+    },
+    {
+      "reference": "one_shot",
+      "candidate": "matched_heuristic",
+      "metric": "agreement_completion",
+      "mean_difference": -0.03125,
+      "ci95_low": -0.035416666666666666,
+      "ci95_high": -0.027604166666666666,
+      "models": 1,
+      "scenarios": 7680
+    },
+    {
+      "reference": "one_shot",
+      "candidate": "matched_heuristic",
+      "metric": "canceled",
+      "mean_difference": 0.04205729166666667,
+      "ci95_low": 0.03763020833333333,
+      "ci95_high": 0.046617838541666665,
+      "models": 1,
+      "scenarios": 7680
+    },
+    {
+      "reference": "one_shot",
+      "candidate": "matched_heuristic",
+      "metric": "collision",
+      "mean_difference": 0.0,
+      "ci95_low": 0.0,
+      "ci95_high": 0.0,
+      "models": 1,
+      "scenarios": 7680
+    },
+    {
+      "reference": "one_shot",
+      "candidate": "matched_heuristic",
+      "metric": "ramp_end_violation",
+      "mean_difference": 0.0,
+      "ci95_low": 0.0,
+      "ci95_high": 0.0,
+      "models": 1,
+      "scenarios": 7680
+    },
+    {
+      "reference": "one_shot",
+      "candidate": "paper_cancel_merge_adapted",
+      "metric": "completed_merge",
+      "mean_difference": 0.0,
+      "ci95_low": 0.0,
+      "ci95_high": 0.0,
+      "models": 1,
+      "scenarios": 7680
+    },
+    {
+      "reference": "one_shot",
+      "candidate": "paper_cancel_merge_adapted",
+      "metric": "agreement_completion",
+      "mean_difference": -0.03125,
+      "ci95_low": -0.035416666666666666,
+      "ci95_high": -0.027604166666666666,
+      "models": 1,
+      "scenarios": 7680
+    },
+    {
+      "reference": "one_shot",
+      "candidate": "paper_cancel_merge_adapted",
+      "metric": "canceled",
+      "mean_difference": 0.04205729166666667,
+      "ci95_low": 0.03763020833333333,
+      "ci95_high": 0.046617838541666665,
+      "models": 1,
+      "scenarios": 7680
+    },
+    {
+      "reference": "one_shot",
+      "candidate": "paper_cancel_merge_adapted",
+      "metric": "collision",
+      "mean_difference": 0.0,
+      "ci95_low": 0.0,
+      "ci95_high": 0.0,
+      "models": 1,
+      "scenarios": 7680
+    },
+    {
+      "reference": "one_shot",
+      "candidate": "paper_cancel_merge_adapted",
+      "metric": "ramp_end_violation",
+      "mean_difference": 0.0,
+      "ci95_low": 0.0,
+      "ci95_high": 0.0,
+      "models": 1,
+      "scenarios": 7680
+    },
+    {
+      "reference": "one_shot",
+      "candidate": "rule_cancel",
+      "metric": "completed_merge",
+      "mean_difference": -0.06575520833333333,
+      "ci95_low": -0.07148763020833333,
+      "ci95_high": -0.059895833333333336,
+      "models": 1,
+      "scenarios": 7680
+    },
+    {
+      "reference": "one_shot",
+      "candidate": "rule_cancel",
+      "metric": "agreement_completion",
+      "mean_difference": -0.08815104166666667,
+      "ci95_low": -0.09479166666666666,
+      "ci95_high": -0.08189778645833333,
+      "models": 1,
+      "scenarios": 7680
+    },
+    {
+      "reference": "one_shot",
+      "candidate": "rule_cancel",
+      "metric": "canceled",
+      "mean_difference": 0.09739583333333333,
+      "ci95_low": 0.09075520833333334,
+      "ci95_high": 0.10403971354166666,
+      "models": 1,
+      "scenarios": 7680
+    },
+    {
+      "reference": "one_shot",
+      "candidate": "rule_cancel",
+      "metric": "collision",
+      "mean_difference": 0.0,
+      "ci95_low": 0.0,
+      "ci95_high": 0.0,
+      "models": 1,
+      "scenarios": 7680
+    },
+    {
+      "reference": "one_shot",
+      "candidate": "rule_cancel",
+      "metric": "ramp_end_violation",
+      "mean_difference": 0.0,
+      "ci95_low": 0.0,
+      "ci95_high": 0.0,
+      "models": 1,
+      "scenarios": 7680
+    },
+    {
+      "reference": "paper_cancel_merge_adapted",
+      "candidate": "learned",
+      "metric": "completed_merge",
+      "mean_difference": -2.604166666666667e-05,
+      "ci95_low": -0.00015625,
+      "ci95_high": 0.0,
+      "models": 5,
+      "scenarios": 7680
+    },
+    {
+      "reference": "paper_cancel_merge_adapted",
+      "candidate": "learned",
+      "metric": "agreement_completion",
+      "mean_difference": 0.016380208333333333,
+      "ci95_low": 0.004215494791666667,
+      "ci95_high": 0.027631510416666664,
+      "models": 5,
+      "scenarios": 7680
+    },
+    {
+      "reference": "paper_cancel_merge_adapted",
+      "candidate": "learned",
+      "metric": "canceled",
+      "mean_difference": -0.018932291666666667,
+      "ci95_low": -0.035474609375,
+      "ci95_high": -0.0015859375000000025,
+      "models": 5,
+      "scenarios": 7680
+    },
+    {
+      "reference": "paper_cancel_merge_adapted",
+      "candidate": "learned",
+      "metric": "collision",
+      "mean_difference": 0.0,
+      "ci95_low": 0.0,
+      "ci95_high": 0.0,
+      "models": 5,
+      "scenarios": 7680
+    },
+    {
+      "reference": "paper_cancel_merge_adapted",
+      "candidate": "learned",
+      "metric": "ramp_end_violation",
+      "mean_difference": 0.0,
+      "ci95_low": 0.0,
+      "ci95_high": 0.0,
+      "models": 5,
+      "scenarios": 7680
+    },
+    {
+      "reference": "paper_cancel_merge_adapted",
+      "candidate": "matched_heuristic",
+      "metric": "completed_merge",
+      "mean_difference": 0.0,
+      "ci95_low": 0.0,
+      "ci95_high": 0.0,
+      "models": 1,
+      "scenarios": 7680
+    },
+    {
+      "reference": "paper_cancel_merge_adapted",
+      "candidate": "matched_heuristic",
+      "metric": "agreement_completion",
+      "mean_difference": 0.0,
+      "ci95_low": 0.0,
+      "ci95_high": 0.0,
+      "models": 1,
+      "scenarios": 7680
+    },
+    {
+      "reference": "paper_cancel_merge_adapted",
+      "candidate": "matched_heuristic",
+      "metric": "canceled",
+      "mean_difference": 0.0,
+      "ci95_low": 0.0,
+      "ci95_high": 0.0,
+      "models": 1,
+      "scenarios": 7680
+    },
+    {
+      "reference": "paper_cancel_merge_adapted",
+      "candidate": "matched_heuristic",
+      "metric": "collision",
+      "mean_difference": 0.0,
+      "ci95_low": 0.0,
+      "ci95_high": 0.0,
+      "models": 1,
+      "scenarios": 7680
+    },
+    {
+      "reference": "paper_cancel_merge_adapted",
+      "candidate": "matched_heuristic",
+      "metric": "ramp_end_violation",
+      "mean_difference": 0.0,
+      "ci95_low": 0.0,
+      "ci95_high": 0.0,
+      "models": 1,
+      "scenarios": 7680
+    },
+    {
+      "reference": "paper_cancel_merge_adapted",
+      "candidate": "one_shot",
+      "metric": "completed_merge",
+      "mean_difference": 0.0,
+      "ci95_low": 0.0,
+      "ci95_high": 0.0,
+      "models": 1,
+      "scenarios": 7680
+    },
+    {
+      "reference": "paper_cancel_merge_adapted",
+      "candidate": "one_shot",
+      "metric": "agreement_completion",
+      "mean_difference": 0.03125,
+      "ci95_low": 0.027604166666666666,
+      "ci95_high": 0.035416666666666666,
+      "models": 1,
+      "scenarios": 7680
+    },
+    {
+      "reference": "paper_cancel_merge_adapted",
+      "candidate": "one_shot",
+      "metric": "canceled",
+      "mean_difference": -0.04205729166666667,
+      "ci95_low": -0.046617838541666665,
+      "ci95_high": -0.03763020833333333,
+      "models": 1,
+      "scenarios": 7680
+    },
+    {
+      "reference": "paper_cancel_merge_adapted",
+      "candidate": "one_shot",
+      "metric": "collision",
+      "mean_difference": 0.0,
+      "ci95_low": 0.0,
+      "ci95_high": 0.0,
+      "models": 1,
+      "scenarios": 7680
+    },
+    {
+      "reference": "paper_cancel_merge_adapted",
+      "candidate": "one_shot",
+      "metric": "ramp_end_violation",
+      "mean_difference": 0.0,
+      "ci95_low": 0.0,
+      "ci95_high": 0.0,
+      "models": 1,
+      "scenarios": 7680
+    },
+    {
+      "reference": "paper_cancel_merge_adapted",
+      "candidate": "rule_cancel",
+      "metric": "completed_merge",
+      "mean_difference": -0.06575520833333333,
+      "ci95_low": -0.07148763020833333,
+      "ci95_high": -0.059895833333333336,
+      "models": 1,
+      "scenarios": 7680
+    },
+    {
+      "reference": "paper_cancel_merge_adapted",
+      "candidate": "rule_cancel",
+      "metric": "agreement_completion",
+      "mean_difference": -0.056901041666666666,
+      "ci95_low": -0.06419270833333333,
+      "ci95_high": -0.04986653645833334,
+      "models": 1,
+      "scenarios": 7680
+    },
+    {
+      "reference": "paper_cancel_merge_adapted",
+      "candidate": "rule_cancel",
+      "metric": "canceled",
+      "mean_difference": 0.055338541666666664,
+      "ci95_low": 0.047265625,
+      "ci95_high": 0.06276041666666667,
+      "models": 1,
+      "scenarios": 7680
+    },
+    {
+      "reference": "paper_cancel_merge_adapted",
+      "candidate": "rule_cancel",
+      "metric": "collision",
+      "mean_difference": 0.0,
+      "ci95_low": 0.0,
+      "ci95_high": 0.0,
+      "models": 1,
+      "scenarios": 7680
+    },
+    {
+      "reference": "paper_cancel_merge_adapted",
+      "candidate": "rule_cancel",
+      "metric": "ramp_end_violation",
+      "mean_difference": 0.0,
+      "ci95_low": 0.0,
+      "ci95_high": 0.0,
+      "models": 1,
+      "scenarios": 7680
+    }
+  ],
+  "scope": "synthetic simulator; intervals are conditional on sampled scenarios"
+}

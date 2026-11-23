@@ -1,0 +1,66 @@
+{
+  "seed": 101,
+  "n_envs": 8,
+  "validation_episodes": 768,
+  "b2": {
+    "episodes": 768,
+    "merged": 262,
+    "agreement": 220,
+    "collision": 0,
+    "ramp_end": 0,
+    "canceled": 522,
+    "reward": 3.431
+  },
+  "points": [
+    {
+      "timesteps": 53248,
+      "episodes": 768,
+      "merged": 264,
+      "agreement": 222,
+      "collision": 0,
+      "ramp_end": 0,
+      "canceled": 535,
+      "reward": 3.472
+    },
+    {
+      "timesteps": 106496,
+      "episodes": 768,
+      "merged": 264,
+      "agreement": 232,
+      "collision": 0,
+      "ramp_end": 0,
+      "canceled": 504,
+      "reward": 3.489
+    },
+    {
+      "timesteps": 159744,
+      "episodes": 768,
+      "merged": 264,
+      "agreement": 232,
+      "collision": 0,
+      "ramp_end": 0,
+      "canceled": 504,
+      "reward": 3.489
+    },
+    {
+      "timesteps": 212992,
+      "episodes": 768,
+      "merged": 264,
+      "agreement": 232,
+      "collision": 0,
+      "ramp_end": 0,
+      "canceled": 504,
+      "reward": 3.489
+    },
+    {
+      "timesteps": 266240,
+      "episodes": 768,
+      "merged": 264,
+      "agreement": 232,
+      "collision": 0,
+      "ramp_end": 0,
+      "canceled": 504,
+      "reward": 3.489
+    }
+  ]
+}
