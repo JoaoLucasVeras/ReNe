@@ -384,6 +384,10 @@ def test_episode_clock_never_overshoots_communication_window(duration):
             "disturbance_type": "none",
             "packet_loss": 1.0,
             "communication_delay_ms": 100,
+            # Same-pair-only fallback never merges, so the episode runs to the deadline.
+            # With total loss the rear peer never hears the cancel and would keep yielding.
+            "fallback_next_gap": False,
+            "rear_peer_cooperation": False,
         }
     )
     sim.reset(seed=42)

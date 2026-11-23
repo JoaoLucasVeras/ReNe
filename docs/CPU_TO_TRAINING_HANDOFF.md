@@ -63,7 +63,7 @@ this is not a formal or general real-world safety guarantee.
   route checks and safety/time checks before activation. The old timing stays active
   until acceptance. Peers reserve ego timing only; their trajectories are not revised.
   This is not atomic distributed commit or a reproduced wireless/coordination stack.
-- Common inputs: 53 features, `lifecycle-prediction-v4`, including prediction outcomes
+- Common inputs: 58 features, `lifecycle-prediction-v7` (November 13: v5 adds `NO_COMPLETION`, v6 the sensed follower, v7 front acceleration and intruder lateral speed), including prediction outcomes
   and candidate availability/times. Rules/PPO see the same clipped float32 data.
   Old checkpoints and normalizers are incompatible.
 - Provisional managers: `paper_cancel_merge_adapted` implements the documented

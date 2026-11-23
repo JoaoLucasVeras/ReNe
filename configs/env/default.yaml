@@ -9,7 +9,7 @@ environment:
   vehicle_length_m: 4.5
   vehicle_width_m: 1.8
   lane_width_m: 3.6
-  merge_start_m: 140.0
+  merge_start_m: 175.0
   lane_change_duration_s: 2.0
   merge_stabilization_s: 1.0
   min_gap_m: 12.0
@@ -21,6 +21,14 @@ environment:
   oracle_horizon_s: 3.0
   max_renegotiations: 1
   enable_timing_revisions: true
+  fallback_next_gap: true
+  rear_peer_cooperation: true
+  rear_cooperation_max_decel_mps2: 2.0
+  rear_cooperation_min_speed_mps: 15.0
+  traffic_gap_closing: true
+  natural_headway_s: {low: 2.2, medium: 1.5, high: 1.2}
+  gap_closing_margin_mps: 2.0
+  fallback_gap_gain_per_s: 0.5
   beacon_interval_s: 0.1
   cancel_retry_s: 0.1
   cancel_timeout_s: 3.0
@@ -34,6 +42,7 @@ environment:
   cut_in_duration_s: 2.0
   cut_in_offset_fraction: 0.4
   local_sensor_range_m: 60.0
+  rear_sensor_range_m: 120.0
   render_width: 800
   render_height: 240
 

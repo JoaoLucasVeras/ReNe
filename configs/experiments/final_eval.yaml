@@ -1,5 +1,5 @@
 experiment:
-  episodes: 1920
+  episodes: 7680  # 192 conditions x 8 ramp lengths x 5 seeds
   seeds: [1001, 1002, 1003, 1004, 1005]
   managers: [one_shot, rule_cancel, paper_cancel_merge_adapted, matched_heuristic, learned]
   output_dir: results/raw/final

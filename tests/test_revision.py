@@ -66,7 +66,9 @@ def test_cancel_aborts_pending_proposal():
 
 
 def test_real_revision_waits_for_acceptance_then_changes_physical_merge_time():
-    sim = MergeLifecycleEnv({"disturbance_type": "none", "packet_loss": 0})
+    sim = MergeLifecycleEnv(
+        {"disturbance_type": "none", "packet_loss": 0, "merge_start_m": 140.0}
+    )  # wide merge zone: an advance is physically possible
     sim.reset(seed=42)
     initial_plan = sim.agreement.planned_merge_time_s
     initial_speed = sim.ramp_speed_mps
@@ -104,7 +106,9 @@ def test_duplicate_proposal_does_not_reset_timeout():
 def test_quantized_attempt_count_cannot_exceed_limit():
     from rene.policies.rule_based import make_manager
 
-    sim = MergeLifecycleEnv({"disturbance_type": "none", "packet_loss": 0})
+    sim = MergeLifecycleEnv(
+        {"disturbance_type": "none", "packet_loss": 0, "merge_start_m": 140.0}
+    )  # wide merge zone: an advance is physically possible
     obs, info = sim.reset(seed=42)
     manager = make_manager("matched_heuristic")
     while True:

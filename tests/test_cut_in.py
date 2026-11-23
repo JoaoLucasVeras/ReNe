@@ -38,19 +38,20 @@ def test_off_grid_path_independent_of_integration_step(dt):
     sim = env(dt_s=dt, disturbance_trigger_s=5.15)
     for _ in range(6):
         sim.step(0)
-    intruder = sim._traffic_bodies()[3]
+    intruder = sim._traffic_bodies()[-1]
     assert intruder.x == pytest.approx(sim.cut_in_trajectory.initial_x_m + 150)
     assert intruder.y == pytest.approx(-2.07)
 
 
-def test_four_bodies_but_only_two_v2x_peers():
+def test_five_bodies_but_only_two_v2x_peers():
+    # Ego, two connected peers, the non-connected follower and the intruder.
     sim = env()
-    assert len(sim._traffic_bodies()) == 4
+    assert len(sim._traffic_bodies()) == 5
     assert set(sim._beacon_payloads()) == {"mainline_front", "mainline_rear"}
     sim.step(0)
     assert all(event.get("sender") != "intruder" for event in sim.communication.bus.events)
     sim.reset(seed=42, options={"disturbance_type": "none"})
-    assert len(sim._traffic_bodies()) == 3
+    assert len(sim._traffic_bodies()) == 4
     assert not sim._manager_values()["intruder_detected"]
 
 
@@ -108,8 +109,8 @@ def test_new_sensor_contract_is_shared_and_checkpoint_incompatible():
     sim = env()
     obs = sim._observation()
     assert obs.shape == (len(FEATURES),)
-    assert len(FEATURES) == 53
-    assert INPUT_VERSION == "lifecycle-prediction-v4"
+    assert len(FEATURES) == 58
+    assert INPUT_VERSION == "lifecycle-prediction-v7"
     assert sim._info()["manager_inputs"] == decode(obs)
     assert sim.observation_space.contains(obs)
 
@@ -144,7 +145,7 @@ def test_collision_check_includes_intruder_between_tick_endpoints():
     assert not bodies_overlap(before[1], before[3])
     _, _, terminated, _, info = sim.step(0)
     after = sim._traffic_bodies()
-    assert not bodies_overlap(after[1], after[3])
+    assert not bodies_overlap(after[1], after[-1])
     assert terminated and info["episode_metrics"]["collision"]
 
 
@@ -155,10 +156,10 @@ def test_actual_ttc_and_headway_include_intruder():
     )
     sim.time_s = 0.02
     # Rear cruises at 25 m/s and closes on the unconnected car in the target lane.
-    clearance = sim._traffic_bodies()[3].x - sim.rear_x_m - 4.5
+    clearance = sim._traffic_bodies()[-1].x - sim.rear_x_m - 4.5
     assert sim.ttc_s == pytest.approx(clearance / 5)
     assert sim.actual_headway_s == pytest.approx(
-        (sim.front_x_m - sim._traffic_bodies()[3].x - 4.5) / 20
+        (sim.front_x_m - sim._traffic_bodies()[-1].x - 4.5) / 20
     )
 
 
@@ -184,7 +185,7 @@ def test_off_grid_final_step_and_seeded_replay():
             obs, _, terminated, truncated, info = sim.step(0)
         assert truncated and not terminated
         assert sim.time_s == pytest.approx(6.05)
-        intruder = sim._traffic_bodies()[3]
+        intruder = sim._traffic_bodies()[-1]
         assert intruder.y == pytest.approx(-1.98)
         trajectories.append((sim._traffic_bodies(), obs.tolist(), info["communication_log"]))
     assert trajectories[0] == trajectories[1]
@@ -203,9 +204,10 @@ def test_default_cut_in_fixtures_are_collision_free_but_do_not_complete_original
         if terminated or truncated:
             break
     assert not info["episode_metrics"]["collision"]
-    assert not info["episode_metrics"]["completed_merge"]
+    # A perception fallback may use the next gap; the original slot never completes.
+    assert info["episode_metrics"]["completion_mode"] != "agreement"
     assert info["episode_metrics"]["canceled"]
-    assert sim.ramp_x_m + sim.config["vehicle_length_m"] / 2 <= sim.config["ramp_end_m"]
+    assert not info["episode_metrics"]["ramp_end_violation"]
 
 
 @pytest.mark.parametrize(

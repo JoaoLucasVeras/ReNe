@@ -7,12 +7,13 @@ import json
 from pathlib import Path
 
 import gymnasium as gym
+from sb3_contrib import MaskablePPO
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 import rene  # noqa: F401
 from rene.envs.manager_inputs import INPUT_VERSION
-from rene.evaluation.manifest import build_manifest
+from rene.evaluation.manifest import build_manifest, reset_options
 from rene.metrics.counterfactual import cancellation_snapshot, evaluate_retention
 from rene.policies.rule_based import make_manager
 from rene.utils.configuration import load_yaml
@@ -40,7 +41,11 @@ def main() -> None:
     if episode_budget > len(manifest):
         parser.error("episode budget exceeds the unique condition/seed manifest")
     manifest = manifest[:episode_budget]
-    output = make_run_dir(exp["output_dir"], args.manager)
+    # Learned runs are named by checkpoint folder so parallel seeds never collide.
+    prefix = args.manager
+    if args.manager == "learned":
+        prefix = f"learned-{Path(args.model).parent.name}"
+    output = make_run_dir(exp["output_dir"], prefix)
     fingerprint = source_fingerprint()
     if args.manager == "learned":
         metadata_path = Path(args.model).with_name("metadata.json")
@@ -57,7 +62,10 @@ def main() -> None:
         if not Path(args.model).with_name("vec_normalize.pkl").exists():
             parser.error("trained VecNormalize statistics are required")
     (output / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    learned = PPO.load(args.model, device="cpu") if args.manager == "learned" else None
+    learned = None
+    if args.manager == "learned":
+        algo_cls = MaskablePPO if metadata.get("algorithm", "ppo") == "maskable_ppo" else PPO
+        learned = algo_cls.load(args.model, device="cpu")
     normalizer = None
     if learned:
         normalization_path = Path(args.model).with_name("vec_normalize.pkl")
@@ -72,16 +80,21 @@ def main() -> None:
     env = gym.make("ReNeMergeLifecycle-v0", config=base)
     for scenario in manifest:
         seed = scenario["seed"]
-        options = {
-            key: value for key, value in scenario.items() if key not in {"seed", "scenario_id"}
-        }
+        options = reset_options(scenario)
         obs, info = env.reset(seed=seed, options=options)
         done = False
         snapshot = None
         while not done:
             if learned:
                 policy_obs = normalizer.normalize_obs(obs) if normalizer else obs
-                action, _ = learned.predict(policy_obs, deterministic=True)
+                if isinstance(learned, MaskablePPO):
+                    action, _ = learned.predict(
+                        policy_obs,
+                        deterministic=True,
+                        action_masks=env.unwrapped.action_masks(),
+                    )
+                else:
+                    action, _ = learned.predict(policy_obs, deterministic=True)
                 selected = int(action)
             else:
                 selected = int(manager.act(obs, info))
@@ -99,6 +112,8 @@ def main() -> None:
             delay_ms=scenario["communication_delay_ms"],
             packet_loss=scenario["packet_loss"],
             disturbance=scenario["disturbance_type"],
+            ramp_end_m=scenario.get("ramp_end_m", base.get("ramp_end_m", 240.0)),
+            ramp_role=scenario.get("ramp_role", "unlisted"),
         )
         row.update(evaluate_retention(snapshot))
         rows.append(row)

@@ -1,0 +1,12 @@
+# Final research training (Nov 18). Budget from pilot v3: validation plateaued by ~106k
+# steps; 300k gives ~3x margin. Seeds 1-5. CPU with 8 workers was fastest in the benchmark.
+experiment:
+  total_timesteps: 300000
+  n_envs: 8
+  sample_scenarios: true
+  vec_backend: subproc
+  torch_threads: 1
+  seed: 1
+  output_dir: models/ppo_final
+env_config: configs/env/default.yaml
+agent_config: configs/agents/ppo.yaml

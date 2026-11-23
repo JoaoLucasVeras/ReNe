@@ -187,7 +187,7 @@ def test_cancellation_is_separate_from_physical_completion():
 
 
 def test_missed_gap_does_not_become_success():
-    env = make_env()
+    env = make_env(fallback_next_gap=False)
     env.front_x_m += 300
     env.rear_x_m += 300
     result = finish(env)
@@ -195,6 +195,17 @@ def test_missed_gap_does_not_become_success():
     assert not result["episode_metrics"]["collision"]
     assert env.ramp_y_m == pytest.approx(3.6)
     assert env.ramp_x_m + env.config["vehicle_length_m"] / 2 <= env.config["ramp_end_m"]
+
+
+def test_missed_gap_next_gap_fallback_is_not_agreement_success():
+    env = make_env()
+    env.front_x_m += 300
+    env.rear_x_m += 300
+    result = finish(env)
+    assert result["episode_metrics"]["completion_mode"] != "agreement"
+    assert result["agreement_state"] != "completed"
+    assert not result["episode_metrics"]["collision"]
+    assert not result["episode_metrics"]["ramp_end_violation"]
 
 
 def test_stabilization_restarts_after_invalid_slot():
@@ -234,3 +245,217 @@ def test_accepted_lane_change_must_fit_ramp_corridor():
 def test_invalid_geometry_or_timing_config_is_rejected(config):
     with pytest.raises(ValueError):
         MergeLifecycleEnv(config=config)
+
+
+def test_follower_starts_one_density_gap_behind_rear_and_is_not_a_v2x_peer():
+    env = make_env()
+    assert env.rear_x_m - env.follower_x_m == pytest.approx(env.front_x_m - env.rear_x_m)
+    assert set(env._beacon_payloads()) == {"mainline_front", "mainline_rear"}
+    assert make_env(fallback_next_gap=False).follower_x_m is None
+
+
+def test_early_cancel_uses_next_gap_behind_rear_without_collision():
+    # Training length and light traffic: a natural next gap still fits.
+    env = make_env(ramp_end_m=300.0, traffic_density="low")
+    # Shrink the original slot below the safe size; the rear/follower gap is untouched.
+    env.front_x_m = env.rear_x_m + 4.5 + 20
+    result = finish(env, ManagerAction.CANCEL)
+    metrics = result["episode_metrics"]
+    assert metrics["completed_merge"] and metrics["completion_mode"] == "fallback"
+    assert not metrics["collision"] and not metrics["ramp_end_violation"]
+    # Merged between the rear peer and the follower, not into the original slot.
+    assert env.follower_x_m < env.ramp_x_m < env.rear_x_m
+    assert env._fallback_slot_safe()
+
+
+def test_fallback_keeps_nominal_merge_location():
+    env = make_env(ramp_end_m=300.0)  # training length: fallback can reach gap speed
+    env._apply_lifecycle_action(ManagerAction.CANCEL)
+    started_x = None
+    while not env.completed and env.time_s < env.config["duration_s"]:
+        env._advance_vehicles()
+        env.time_s += env.config["dt_s"]
+        env._update_completion()
+        if started_x is None and env._lane_change_started:
+            started_x = env.ramp_x_m
+    entry = env.config["merge_point_m"] - 25 * env.config["lane_change_duration_s"] / 2
+    assert started_x is not None and started_x >= entry - 1.0
+
+
+def test_opening_check_rejects_open_road_without_a_follower():
+    env = make_env()
+    env.follower_x_m = None
+    env.rear_x_m = env.ramp_x_m - 200
+    env.front_x_m = env.ramp_x_m + 200
+    assert env._opening_safe_for(3.0)  # bounded by front and the distant rear
+    env.rear_x_m = env.ramp_x_m + 150  # ego is now behind every mainline vehicle
+    assert not env._opening_safe_for(3.0)
+
+
+def test_nominal_baselines_do_not_prefer_fallback():
+    for name in ("paper_cancel_merge_adapted", "matched_heuristic"):
+        env = make_env()
+        from rene.policies.rule_based import make_manager
+
+        manager = make_manager(name)
+        obs, info = env.reset(seed=42)
+        while True:
+            obs, _, terminated, truncated, info = env.step(int(manager.act(obs, info)))
+            if terminated or truncated:
+                break
+        assert info["episode_metrics"]["completion_mode"] == "agreement"
+        assert not info["episode_metrics"]["canceled"]
+
+
+def test_rear_sensor_range_detects_follower_beyond_forward_range():
+    env = make_env(traffic_density="low")
+    gap = env.ramp_x_m - env.follower_x_m
+    assert env.config["local_sensor_range_m"] < gap <= env.config["rear_sensor_range_m"]
+    values = env._manager_values()
+    assert values["follower_detected"] == 1.0
+    assert values["follower_relative_m"] == pytest.approx(gap)
+    short = make_env(traffic_density="low", rear_sensor_range_m=60.0)
+    assert short._manager_values()["follower_detected"] == 0.0
+
+
+def test_forward_range_still_limits_bodies_ahead():
+    env = make_env()
+    ahead = VehicleBody(env.ramp_x_m + 61.0, 0.0, 4.5, 1.8)
+    behind = VehicleBody(env.ramp_x_m - 61.0, 0.0, 4.5, 1.8)
+    assert not env._within_sensor_range(ahead)
+    assert env._within_sensor_range(behind)
+
+
+def test_early_nominal_fallback_prediction_sees_next_gap():
+    from rene.envs.manager_inputs import decode
+    from rene.prediction.rollouts import predict
+
+    # Training length, light traffic, no gap closing: isolates rear sensing.
+    env = make_env(ramp_end_m=300.0, traffic_density="low", traffic_gap_closing=False)
+    values = decode(env._observation())
+    assert values["follower_detected"] == 1.0
+    assert predict(values, env.config, fallback=True).status == "SAFE_COMPLETION"
+
+
+def test_target_gap_skips_a_gap_that_closes_within_the_entry_window():
+    env = make_env()
+    env._apply_lifecycle_action(ManagerAction.CANCEL)
+    original = env._target_gap()
+    assert original[0][0].x == pytest.approx(env.front_x_m)  # ego sits in its own gap
+    env.front_speed_mps = 10.0  # front braking hard: the original gap collapses
+    target = env._target_gap()
+    assert target is not None
+    assert target[0][0].x == pytest.approx(env.rear_x_m)  # next gap behind the rear
+    assert target[1][0].x == pytest.approx(env.follower_x_m)
+
+
+def test_gap_alignment_tracks_the_gap_center_speed():
+    env = make_env()
+    env._apply_lifecycle_action(ManagerAction.CANCEL)
+    env.front_speed_mps = 24.0  # still large enough; the center moves at 24.5 m/s
+    lead, back = env._target_gap()
+    env.ramp_x_m = (lead[0].x + back[0].x) / 2  # exactly at the gap center
+    assert env._gap_alignment_speed() == pytest.approx(24.5)
+
+
+def test_after_cancel_the_reserve_follows_the_targeted_gap_not_the_named_front():
+    env = make_env()
+    env._apply_lifecycle_action(ManagerAction.CANCEL)
+    env.front_speed_mps = 10.0
+    env.ramp_x_m = env.rear_x_m - 30.0  # ego aligned with the next gap
+    lead, back = env._target_gap()
+    # The reserve's slowing check now reads the targeted gap's leader (the rear peer).
+    assert lead[0].x == pytest.approx(env.rear_x_m)
+    assert lead[1] >= env.config["desired_speed_mps"] - 0.05
+    assert back[0].x == pytest.approx(env.follower_x_m)
+
+
+def test_fallback_lane_change_cannot_accelerate_past_the_ramp_end():
+    # Regression (Nov 13 ramp sweep): fallback gap tracking accelerated during a
+    # lane change that was only eligible at constant speed, overrunning a 290 m ramp.
+    env = MergeLifecycleEnv(
+        config={
+            "ramp_end_m": 290.0,
+            "traffic_density": "low",
+            "disturbance_type": "cut_in",
+            "disturbance_severity": "hard",
+            "communication_delay_ms": 0,
+            "packet_loss": 0.0,
+        }
+    )
+    env.reset(seed=44)
+    result = finish(env)
+    assert not result["episode_metrics"]["ramp_end_violation"]
+    assert not result["episode_metrics"]["collision"]
+
+
+def test_lane_change_in_progress_is_speed_capped_to_finish_on_ramp():
+    env = make_env()
+    env._lane_change_started = True
+    env.ramp_y_m = 1.8  # one second of lateral move left
+    env.ramp_x_m = env.config["ramp_end_m"] - 2.25 - 10.0  # only 10 m of ramp left
+    env.ramp_speed_mps = 8.0
+    env._advance_vehicles()
+    assert env.ramp_speed_mps <= 10.0 / (1.8 / 1.8 + env.config["dt_s"]) + 1e-9
+
+
+def test_rear_peer_yields_only_while_it_holds_the_agreement():
+    env = make_env()
+    env.ramp_speed_mps = 15.0  # ego slower than the slot: the rear peer must ease off
+    assert env._rear_cooperating()
+    yielding = env._rear_following_accel(env.config["dt_s"])
+    assert yielding < 0.0
+    assert yielding >= -env.config["rear_cooperation_max_decel_mps2"] - 1e-9
+    env.communication.session.remote_released_at_s["mainline_rear"] = env.time_s
+    assert not env._rear_cooperating()
+    assert env._rear_following_accel(env.config["dt_s"]) >= 0.0
+    off = make_env(rear_peer_cooperation=False)
+    off.ramp_speed_mps = 15.0
+    assert not off._rear_cooperating()
+
+
+def test_rear_peer_never_slows_below_floor_for_the_ego():
+    env = make_env()
+    env.ramp_speed_mps = 0.0
+    env.rear_speed_mps = env.config["rear_cooperation_min_speed_mps"]
+    assert env._rear_following_accel(env.config["dt_s"]) >= 0.0
+
+
+def test_follower_never_cooperates():
+    env = make_env()
+    env.ramp_speed_mps = 5.0
+    env.follower_x_m = env.ramp_x_m - 20.0
+    env.rear_x_m = env.ramp_x_m + 300.0  # follower is directly behind the ramp ego
+    accel = env._following_accel(env.follower_x_m, env.follower_speed_mps, 0.2)
+    assert accel >= 0.0  # no virtual leader for a non-connected vehicle
+
+
+def test_ordinary_traffic_closes_to_natural_headway_without_an_agreement():
+    env = make_env(traffic_density="high")
+    start = env.rear_x_m - env.follower_x_m
+    for _ in range(60):  # 12 s of follower driving behind the rear peer
+        env._advance_vehicles()
+        env.time_s += env.config["dt_s"]
+    natural = env.config["natural_headway_s"]["high"] * env.follower_speed_mps + 4.5
+    assert env.rear_x_m - env.follower_x_m < start - 10.0
+    assert env.rear_x_m - env.follower_x_m >= natural - 1.0
+
+
+def test_rear_peer_holds_the_gap_only_while_agreed():
+    held = make_env(traffic_density="high")
+    released = make_env(traffic_density="high")
+    released.communication.session.remote_released_at_s["mainline_rear"] = 0.0
+    for env in (held, released):
+        for _ in range(20):
+            env._advance_vehicles()
+            env.time_s += env.config["dt_s"]
+    assert released.rear_x_m > held.rear_x_m + 2.0  # released rear closes up on the front
+
+
+def test_gap_closing_can_be_disabled():
+    env = make_env(traffic_density="high", traffic_gap_closing=False)
+    start = env.rear_x_m - env.follower_x_m
+    for _ in range(30):
+        env._advance_vehicles()
+        env.time_s += env.config["dt_s"]
+    assert env.rear_x_m - env.follower_x_m == pytest.approx(start, abs=0.5)

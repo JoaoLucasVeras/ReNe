@@ -1,0 +1,180 @@
+{
+  "one_shot": {
+    "episodes": 972,
+    "decisions": 14850,
+    "decision_override_rate": 0.038,
+    "override_reasons": {
+      "headway_below_minimum": 297,
+      "target_slot_occupied": 243,
+      "ttc_below_minimum": 27
+    },
+    "episodes_canceled": 567,
+    "cancel_initiator": {
+      "shield_infeasible": 567
+    },
+    "completion_mode": {
+      "agreement": 405,
+      "not_completed": 486,
+      "fallback": 81
+    },
+    "collisions": 0,
+    "ramp_end": 0,
+    "shield_infeasible_overrides_with_counterfactual": 567,
+    "cf_infeasibility_cleared": 108,
+    "cf_cleared_within_1s": 54,
+    "cf_unshielded_collision": 0,
+    "cf_unshielded_ramp_end": 0,
+    "cf_unshielded_agreement_completed_safely": 0,
+    "cf_unshielded_min_ttc_below_1s": 0
+  },
+  "paper_cancel_merge_adapted": {
+    "episodes": 972,
+    "decisions": 14823,
+    "decision_override_rate": 0.038,
+    "override_reasons": {
+      "headway_below_minimum": 297,
+      "target_slot_occupied": 243,
+      "ttc_below_minimum": 27
+    },
+    "episodes_canceled": 592,
+    "cancel_initiator": {
+      "shield_infeasible": 567,
+      "manager": 25
+    },
+    "completion_mode": {
+      "agreement": 380,
+      "not_completed": 486,
+      "fallback": 106
+    },
+    "collisions": 0,
+    "ramp_end": 0,
+    "shield_infeasible_overrides_with_counterfactual": 567,
+    "cf_infeasibility_cleared": 108,
+    "cf_cleared_within_1s": 54,
+    "cf_unshielded_collision": 0,
+    "cf_unshielded_ramp_end": 0,
+    "cf_unshielded_agreement_completed_safely": 0,
+    "cf_unshielded_min_ttc_below_1s": 0
+  },
+  "matched_heuristic": {
+    "episodes": 972,
+    "decisions": 13537,
+    "decision_override_rate": 0.036,
+    "override_reasons": {
+      "headway_below_minimum": 213,
+      "target_slot_occupied": 243,
+      "ttc_below_minimum": 27
+    },
+    "episodes_canceled": 492,
+    "cancel_initiator": {
+      "shield_infeasible": 483,
+      "manager": 9
+    },
+    "completion_mode": {
+      "agreement": 480,
+      "not_completed": 402,
+      "fallback": 90
+    },
+    "collisions": 0,
+    "ramp_end": 0,
+    "shield_infeasible_overrides_with_counterfactual": 483,
+    "cf_infeasibility_cleared": 36,
+    "cf_cleared_within_1s": 18,
+    "cf_unshielded_collision": 0,
+    "cf_unshielded_ramp_end": 0,
+    "cf_unshielded_agreement_completed_safely": 0,
+    "cf_unshielded_min_ttc_below_1s": 0
+  },
+  "random_all": {
+    "episodes": 972,
+    "decisions": 14067,
+    "decision_override_rate": 0.054,
+    "override_reasons": {
+      "counterproposal_infeasible": 765
+    },
+    "episodes_canceled": 972,
+    "cancel_initiator": {
+      "shield_bad_renegotiation": 765,
+      "manager": 207
+    },
+    "completion_mode": {
+      "fallback": 567,
+      "not_completed": 405
+    },
+    "collisions": 0,
+    "ramp_end": 0,
+    "shield_infeasible_overrides_with_counterfactual": 0,
+    "cf_infeasibility_cleared": 0,
+    "cf_cleared_within_1s": 0,
+    "cf_unshielded_collision": 0,
+    "cf_unshielded_ramp_end": 0,
+    "cf_unshielded_agreement_completed_safely": 0,
+    "cf_unshielded_min_ttc_below_1s": 0
+  },
+  "random_valid": {
+    "episodes": 972,
+    "decisions": 14067,
+    "decision_override_rate": 0.039,
+    "override_reasons": {
+      "counterproposal_infeasible": 554
+    },
+    "episodes_canceled": 972,
+    "cancel_initiator": {
+      "manager": 418,
+      "shield_bad_renegotiation": 554
+    },
+    "completion_mode": {
+      "fallback": 567,
+      "not_completed": 405
+    },
+    "collisions": 0,
+    "ramp_end": 0,
+    "shield_infeasible_overrides_with_counterfactual": 0,
+    "cf_infeasibility_cleared": 0,
+    "cf_cleared_within_1s": 0,
+    "cf_unshielded_collision": 0,
+    "cf_unshielded_ramp_end": 0,
+    "cf_unshielded_agreement_completed_safely": 0,
+    "cf_unshielded_min_ttc_below_1s": 0
+  },
+  "identical_outcome_fraction": {
+    "one_shot vs paper_cancel_merge_adapted": 0.974,
+    "paper_cancel_merge_adapted vs matched_heuristic": 0.617,
+    "one_shot vs matched_heuristic": 0.608
+  },
+  "B2_vs_B3_identical_by_disturbance": {
+    "none": "81/243",
+    "braking": "171/243",
+    "cut_in": "225/243",
+    "intent_mismatch": "123/243"
+  },
+  "grid": {
+    "seeds": [
+      42,
+      43,
+      44
+    ],
+    "delay_ms": [
+      0.0,
+      100.0,
+      800.0
+    ],
+    "loss": [
+      0.0,
+      0.2,
+      0.5
+    ],
+    "severity": [
+      "mild",
+      "moderate",
+      "hard"
+    ],
+    "trigger_s": [
+      5
+    ],
+    "workers": 6,
+    "output": "results/raw/ramp-sweep/ramp-320",
+    "env": "{\"ramp_end_m\": 320}"
+  },
+  "scenarios": 972
+}

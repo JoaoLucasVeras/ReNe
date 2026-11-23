@@ -46,7 +46,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "vehicle_length_m": 4.5,
     "vehicle_width_m": 1.8,
     "lane_width_m": 3.6,
-    "merge_start_m": 140.0,
+    # Earliest lane-change start for the nominal plan (merge point minus half a
+    # lane change at 25 m/s), so the accepted plan is already the earliest feasible
+    # timing and "advance" is not a free improvement (Nov 18 B3 review).
+    "merge_start_m": 175.0,
     "lane_change_duration_s": 2.0,
     "merge_stabilization_s": 1.0,
     "min_gap_m": 12.0,
@@ -58,6 +61,17 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "oracle_horizon_s": 3.0,
     "max_renegotiations": 1,
     "enable_timing_revisions": True,
+    "fallback_next_gap": True,
+    # Rear peer holds the reserved gap open while it holds an active agreement.
+    "rear_peer_cooperation": True,
+    "rear_cooperation_max_decel_mps2": 2.0,
+    "rear_cooperation_min_speed_mps": 15.0,
+    # Ordinary traffic closes to its natural time headway (declared ReNe choice):
+    # only light traffic leaves merge-sized gaps without an agreement.
+    "traffic_gap_closing": True,
+    "natural_headway_s": {"low": 2.2, "medium": 1.5, "high": 1.2},
+    "gap_closing_margin_mps": 2.0,
+    "fallback_gap_gain_per_s": 0.5,
     "render_width": 800,
     "render_height": 240,
     "disturbance_type": "cut_in",
@@ -73,6 +87,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "cut_in_duration_s": 2.0,
     "cut_in_offset_fraction": 0.4,
     "local_sensor_range_m": 60.0,
+    # Rearward range (rear radar class); bodies behind the ego use this range.
+    "rear_sensor_range_m": 120.0,
     "communication_delay_ms": 100,
     "packet_loss": 0.05,
     "beacon_interval_s": 0.1,
@@ -112,6 +128,7 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
             "intent_decel_mps2",
             "cut_in_duration_s",
             "local_sensor_range_m",
+            "rear_sensor_range_m",
         ):
             if not np.isfinite(self.config[key]) or self.config[key] <= 0:
                 raise ValueError(f"{key} must be finite and positive")
@@ -140,6 +157,9 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
         self.observation_space = spaces.Box(-1.0, 1.0, shape=(len(FEATURES),), dtype=np.float32)
         self._episode_seed = 0
         self._episode_id = ""
+        self.follower_x_m = None
+        self.follower_speed_mps = 0.0
+        self._traffic_density = "medium"
         self._invalid_since_s: float | None = None
         self._last_accel = 0.0
         self._intent_position_error_m = 0.0
@@ -159,7 +179,16 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
             seed = int(self.np_random.integers(0, 2**31 - 1))
         self._episode_seed = int(seed)
         self._episode_id = options.get("episode_id", f"episode-{seed}")
+        # Ramp length is a per-episode scenario factor (training/evaluation protocol).
+        # Everything downstream, including the shared predictor, reads self.config.
+        if not hasattr(self, "_base_ramp_end_m"):
+            self._base_ramp_end_m = float(self.config["ramp_end_m"])
+        ramp_end = float(options.get("ramp_end_m", self._base_ramp_end_m))
+        if not np.isfinite(ramp_end) or ramp_end <= self.config["merge_point_m"]:
+            raise ValueError("ramp_end_m must be finite and beyond the merge point")
+        self.config["ramp_end_m"] = ramp_end
         density = options.get("traffic_density", self.config["traffic_density"])
+        self._traffic_density = density if density in {"low", "medium", "high"} else "medium"
         density_factor = {"low": 1.2, "medium": 1.0, "high": 5 / 6}.get(density, 1.0)
         density_gap = float(self.config["initial_gap_m"]) * density_factor
         initial_gap = float(options.get("initial_gap_m", density_gap))
@@ -180,6 +209,14 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
         self._front_intent_speed_mps = self.ramp_speed_mps
         self.rear_x_m = self.ramp_x_m - center_span / 2
         self.rear_speed_mps = self.ramp_speed_mps
+        # Non-connected mainline follower one density gap behind the rear peer. It
+        # bounds the next gap available to the perception fallback after cancellation.
+        if self.config["fallback_next_gap"]:
+            self.follower_x_m = self.rear_x_m - center_span
+            self.follower_speed_mps = self.ramp_speed_mps
+        else:
+            self.follower_x_m = None
+            self.follower_speed_mps = 0.0
         self.ramp_y_m = float(self.config["lane_width_m"])
         self._lane_change_started = False
         self._stable_since_s: float | None = None
@@ -314,14 +351,25 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
         ego, front, _ = self._bodies()
         return bumper_clearance(ego, front)
 
+    def _follower_body(self) -> VehicleBody | None:
+        if self.follower_x_m is None:
+            return None
+        return VehicleBody(
+            self.follower_x_m, 0.0, self.config["vehicle_length_m"], self.config["vehicle_width_m"]
+        )
+
     def _traffic_bodies(self) -> tuple[VehicleBody, ...]:
         bodies = self._bodies()
+        if self.follower_x_m is not None:
+            bodies += (self._follower_body(),)
         if self.cut_in_trajectory is not None:
             bodies += (self.cut_in_trajectory.body_at(self.time_s),)
         return bodies
 
     def _traffic_speeds(self) -> tuple[float, ...]:
         speeds = (self.ramp_speed_mps, self.front_speed_mps, self.rear_speed_mps)
+        if self.follower_x_m is not None:
+            speeds += (self.follower_speed_mps,)
         if self.cut_in_trajectory is not None:
             speeds += (self.cut_in_trajectory.speed_mps,)
         return speeds
@@ -342,7 +390,36 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
         if self.cut_in_trajectory is None:
             return None
         body = self.cut_in_trajectory.body_at(self.time_s)
-        return body if abs(body.x - self.ramp_x_m) <= self.config["local_sensor_range_m"] else None
+        return body if self._within_sensor_range(body) else None
+
+    def _within_sensor_range(self, body: VehicleBody) -> bool:
+        """Ideal local sensing: forward range ahead of the ego, rear range behind it."""
+        offset = body.x - self.ramp_x_m
+        limit = (
+            self.config["local_sensor_range_m"]
+            if offset >= 0
+            else self.config["rear_sensor_range_m"]
+        )
+        return abs(offset) <= limit
+
+    def _observed_intruder_lateral_speed(self, window_s: float = 0.1) -> float:
+        """Lateral speed from a backward difference of two sensed positions.
+
+        Positive means moving toward the mainline. Zero at the exact onset of a
+        maneuver: a sensor needs measurable displacement before reporting motion.
+        """
+        if self._observed_intruder() is None:
+            return 0.0
+        now = self.cut_in_trajectory.body_at(self.time_s).y
+        before = self.cut_in_trajectory.body_at(max(0.0, self.time_s - window_s)).y
+        return (now - before) / window_s
+
+    def _observed_follower(self) -> VehicleBody | None:
+        """Ideal local detection of the non-connected follower within sensor range."""
+        body = self._follower_body()
+        if body is None or not self._within_sensor_range(body):
+            return None
+        return body
 
     @property
     def rear_clearance_m(self) -> float:
@@ -452,35 +529,187 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
                 return False
         return True
 
+    def _rear_cooperating(self) -> bool:
+        """The rear peer yields to the ego only while it still holds an agreement.
+
+        Cooperation lasts until the rear peer actually receives the cancellation (so
+        delay and loss matter) and ends once the ego is in the lane or the agreement
+        is completed or failed. The non-connected follower never cooperates.
+        """
+        if not self.config["rear_peer_cooperation"]:
+            return False
+        if self.agreement.state in {AgreementState.COMPLETED, AgreementState.FAILED}:
+            return False
+        if PEERS[1] in self.communication.session.remote_released_at_s:
+            return False
+        return self.ramp_y_m > 1e-6 and self.ramp_x_m > self.rear_x_m
+
     def _rear_following_accel(self, dt):
-        rear = self._bodies()[2]
-        leaders = [
-            (body, speed)
-            for body, speed in zip(self._traffic_bodies(), self._traffic_speeds(), strict=True)
-            if body.x > rear.x and lateral_overlap(body, rear)
-        ]
+        cooperating = self._rear_cooperating()
+        # Without an agreement the rear peer is ordinary traffic and closes up.
+        accel = self._following_accel(
+            self.rear_x_m, self.rear_speed_mps, dt, close_gap=not cooperating
+        )
+        if cooperating:
+            # Virtual leader: keep a safe following gap behind the ego's projection on
+            # the lane, so the reserved slot stays open from the rear while the ego
+            # adjusts (standard cooperative-merging gap creation).
+            ego = VehicleBody(
+                self.ramp_x_m, 0.0, self.config["vehicle_length_m"], self.config["vehicle_width_m"]
+            )
+            yield_accel = self._following_accel(
+                self.rear_x_m, self.rear_speed_mps, dt, leader=(ego, self.ramp_speed_mps)
+            )
+            # Courtesy is bounded: comfortable braking only, and never below a floor
+            # speed (the rear peer will not stop on the freeway for a ramp vehicle).
+            yield_accel = max(yield_accel, -self.config["rear_cooperation_max_decel_mps2"])
+            if self.rear_speed_mps <= self.config["rear_cooperation_min_speed_mps"]:
+                yield_accel = max(yield_accel, 0.0)
+            accel = min(accel, yield_accel)
+        return accel
+
+    def _natural_headway_s(self) -> float:
+        return float(self.config["natural_headway_s"][self._traffic_density])
+
+    def _following_accel(self, x_m, speed_mps, dt, leader=None, close_gap=False):
+        """Bounded car following for a mainline vehicle (rear peer or follower).
+
+        ``leader`` overrides the nearest in-lane vehicle (used for a virtual leader).
+        With ``close_gap`` the vehicle behaves as ordinary traffic: it speeds up (to at
+        most desired + closing margin) until it reaches its natural time headway, so
+        merge-sized gaps persist only where an agreement holds them open.
+        """
+        me = VehicleBody(x_m, 0.0, self.config["vehicle_length_m"], self.config["vehicle_width_m"])
+        leaders = (
+            [leader]
+            if leader is not None
+            else [
+                (body, speed)
+                for body, speed in zip(
+                    self._traffic_bodies(), self._traffic_speeds(), strict=True
+                )
+                if body.x > me.x and lateral_overlap(body, me)
+            ]
+        )
         target = self.config["desired_speed_mps"]
         cap = float("inf")
         if leaders:
-            leader, speed = min(leaders, key=lambda item: item[0].x)
-            desired_gap = max(
-                self.config["min_gap_m"], self.config["min_headway_s"] * self.rear_speed_mps
-            )
+            lead_body, speed = min(leaders, key=lambda item: item[0].x)
+            desired_gap = max(self.config["min_gap_m"], self.config["min_headway_s"] * speed_mps)
             cap = np.sqrt(
                 max(
                     0.0,
                     speed**2
                     + 2
                     * self.config["max_decel_mps2"]
-                    * (bumper_clearance(rear, leader) - desired_gap),
+                    * (bumper_clearance(me, lead_body) - desired_gap),
                 )
             )
+            natural = max(self.config["min_gap_m"], self._natural_headway_s() * speed_mps)
+            if (
+                close_gap
+                and self.config["traffic_gap_closing"]
+                and bumper_clearance(me, lead_body) > natural
+            ):
+                target = self.config["desired_speed_mps"] + self.config["gap_closing_margin_mps"]
             target = min(target, cap)
         return float(
             np.clip(
-                min((target - self.rear_speed_mps) * 0.5, (cap - self.rear_speed_mps) / dt),
+                min((target - speed_mps) * 0.5, (cap - speed_mps) / dt),
                 -self.config["max_decel_mps2"],
                 self.config["max_accel_mps2"],
+            )
+        )
+
+    def _lane_traffic(self) -> list[tuple[VehicleBody, float]]:
+        """Bodies (excluding the ego) touching the mainline lane, ordered front to back.
+
+        A partially cut-in vehicle counts as present, which is conservative.
+        """
+        width = self.config["vehicle_width_m"]
+        items = [
+            (body, speed)
+            for body, speed in zip(
+                self._traffic_bodies()[1:], self._traffic_speeds()[1:], strict=True
+            )
+            if lateral_overlap(body, VehicleBody(body.x, 0.0, body.length, width))
+        ]
+        return sorted(items, key=lambda item: -item[0].x)
+
+    def _required_spacing(self, follower_speed_mps: float) -> float:
+        return max(self.config["min_gap_m"], self.config["min_headway_s"] * follower_speed_mps)
+
+    def _opening_safe_for(self, horizon_s: float) -> bool:
+        """Perception fallback entry check into a bounded opening at the ego's position.
+
+        Requires a real mainline vehicle both ahead and behind (never open road past
+        the last modeled vehicle), with the same gap/headway/TTC limits and the same
+        constant-speed projection used for the agreement slot.
+        """
+        length = self.config["vehicle_length_m"]
+        ego = VehicleBody(self.ramp_x_m, 0.0, length, self.config["vehicle_width_m"])
+        lane = self._lane_traffic()
+        ahead = [item for item in lane if item[0].x > ego.x]
+        behind = [item for item in lane if item[0].x <= ego.x]
+        if not ahead or not behind:
+            return False
+        (leader, lead_speed), (follower, follow_speed) = ahead[-1], behind[0]
+        front = bumper_clearance(ego, leader)
+        rear = bumper_clearance(follower, ego)
+        front_min = min(front, front + (lead_speed - self.ramp_speed_mps) * horizon_s)
+        rear_min = min(rear, rear + (self.ramp_speed_mps - follow_speed) * horizon_s)
+        return (
+            front_min >= self._required_spacing(self.ramp_speed_mps)
+            and rear_min >= self._required_spacing(follow_speed)
+            and longitudinal_ttc(ego, self.ramp_speed_mps, leader, lead_speed)
+            >= self.config["min_ttc_s"]
+            and longitudinal_ttc(follower, follow_speed, ego, self.ramp_speed_mps)
+            >= self.config["min_ttc_s"]
+        )
+
+    def _target_gap(self):
+        """Nearest bounded mainline gap large enough at its follower's speed.
+
+        Returns ((lead_body, lead_speed), (back_body, back_speed)) or None.
+        """
+        length = self.config["vehicle_length_m"]
+        lane = self._lane_traffic()
+        # A gap must stay usable over the same entry window the opening check uses.
+        window_s = self.config["lane_change_duration_s"] + self.config["merge_stabilization_s"]
+        best = None
+        for lead, back in zip(lane, lane[1:], strict=False):
+            free = lead[0].x - back[0].x - lead[0].length / 2 - back[0].length / 2
+            projected = free + min(0.0, (lead[1] - back[1]) * window_s)
+            if projected < length + 2 * self._required_spacing(back[1]):
+                continue
+            distance = abs((lead[0].x + back[0].x) / 2 - self.ramp_x_m)
+            if best is None or distance < best[0]:
+                best = (distance, lead, back)
+        return None if best is None else (best[1], best[2])
+
+    def _gap_alignment_speed(self) -> float | None:
+        """Fallback speed target that steers the ego toward the nearest usable gap.
+
+        Returns None when no bounded gap between consecutive mainline vehicles is
+        large enough at its current speed; callers keep the legacy fallback speed.
+        """
+        target = self._target_gap()
+        if target is None:
+            return None
+        (lead, lead_speed), (back, back_speed) = target
+        gap_speed = (lead_speed + back_speed) / 2  # the gap center's speed
+        error = (lead.x + back.x) / 2 - self.ramp_x_m
+        # Relative speed toward the gap center, bounded so the ego can still null it
+        # with its comfortable limit on arrival (accelerate back up when the gap is
+        # behind, brake when it is ahead). A pure proportional law overshoots.
+        recover = self.config["max_accel_mps2"] if error < 0 else self.config["max_decel_mps2"]
+        relative = min(
+            self.config["fallback_gap_gain_per_s"] * abs(error),
+            np.sqrt(2 * 0.8 * recover * abs(error)),
+        )
+        return float(
+            np.clip(
+                gap_speed + np.sign(error) * relative, 0.0, self.config["desired_speed_mps"]
             )
         )
 
@@ -516,6 +745,20 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
             ManagerAction.RENEGOTIATE_DELAY: "delay_feasible",
         }.get(action)
         return field is not None and values[field] > 0.5
+
+    def action_masks(self) -> np.ndarray:
+        """Actions a learned manager may request now (MaskablePPO convention).
+
+        Continue and cancel are always allowed; timing revisions only when the shared
+        candidate check says they are feasible; next-gap and order-swap never (not
+        modeled). Rules use the same feasibility flags, so masking adds no information.
+        """
+        mask = np.zeros(len(ManagerAction), dtype=bool)
+        mask[ManagerAction.CONTINUE] = True
+        mask[ManagerAction.CANCEL] = True
+        for action in (ManagerAction.RENEGOTIATE_DELAY, ManagerAction.RENEGOTIATE_ADVANCE):
+            mask[action] = self._renegotiation_feasible(action)
+        return mask
 
     def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         requested = ManagerAction(int(action))
@@ -709,7 +952,9 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
                         before_time,
                         fraction * dt,
                     )
-                    payloads[PEERS[0]].update(x_m=x, speed_mps=speed)
+                    payloads[PEERS[0]].update(
+                        x_m=x, speed_mps=speed, accel_mps2=pulse.accel_at(at_s, speed)
+                    )
                 return payloads
 
             self.communication.advance(self.time_s, sample)
@@ -791,17 +1036,47 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
     def _advance_vehicles(self, dt_s: float | None = None) -> None:
         dt = self.config["dt_s"] if dt_s is None else dt_s
         rear_accel = self._rear_following_accel(dt)
-        target_speed = 18.0 if self.fallback_active else self.config["desired_speed_mps"]
-        # A canceled ego may merge under fallback only if the same physical pair
-        # remains safe. Otherwise it stays/returns to the ramp and stops at its end.
+        follower_accel = (
+            self._following_accel(
+                self.follower_x_m, self.follower_speed_mps, dt, close_gap=True
+            )
+            if self.follower_x_m is not None
+            else 0.0
+        )
+        next_gap = self.fallback_active and self.config["fallback_next_gap"]
+        target_speed = self.config["desired_speed_mps"]
+        aligned = self._gap_alignment_speed() if next_gap else None
+        if self.fallback_active:
+            target_speed = 18.0 if aligned is None else aligned
+        # Without next-gap fallback, a canceled ego may merge only if the same
+        # physical pair remains safe. With it, the ego may use any bounded,
+        # currently safe opening between mainline vehicles (perception fallback).
+        # Otherwise it stays/returns to the ramp and stops at its end.
         remaining_lateral_s = self.ramp_y_m / (
             self.config["lane_width_m"] / self.config["lane_change_duration_s"]
         )
-        safe_slot = self._slot_safe_for(remaining_lateral_s + self.config["merge_stabilization_s"])
-        wait_s = max(
-            self.agreement.planned_merge_time_s
+        entry_horizon_s = remaining_lateral_s + self.config["merge_stabilization_s"]
+        safe_slot = (
+            self._opening_safe_for(entry_horizon_s)
+            if next_gap
+            else self._slot_safe_for(entry_horizon_s)
+        )
+        # A canceled agreement no longer binds the ego to its planned *timing*, but the
+        # fallback keeps the same nominal merge *location* (a lane change centered on
+        # the merge point), so gap choice is the only advantage it can gain.
+        fallback_entry_x = (
+            self.config["merge_point_m"]
+            - self.ramp_speed_mps * self.config["lane_change_duration_s"] / 2
+        )
+        planned_wait_s = (
+            (fallback_entry_x - self.ramp_x_m) / max(self.ramp_speed_mps, 0.1)
+            if next_gap
+            else self.agreement.planned_merge_time_s
             - self.config["lane_change_duration_s"] / 2
-            - self.time_s,
+            - self.time_s
+        )
+        wait_s = max(
+            planned_wait_s,
             (self.config["merge_start_m"] - self.ramp_x_m) / max(self.ramp_speed_mps, 0.1),
             0.0,
         )
@@ -814,8 +1089,12 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
         eligible = (
             self.ramp_x_m >= self.config["merge_start_m"]
             and self.revision_session.state != "pending"
-            and self.time_s
-            >= self.agreement.planned_merge_time_s - self.config["lane_change_duration_s"] / 2
+            and (
+                self.ramp_x_m >= fallback_entry_x - 1e-9
+                if next_gap
+                else self.time_s
+                >= self.agreement.planned_merge_time_s - self.config["lane_change_duration_s"] / 2
+            )
             and self.ramp_x_m + self.ramp_speed_mps * remaining_lateral_s
             <= self.config["ramp_end_m"] - self.config["vehicle_length_m"] / 2
         )
@@ -856,10 +1135,29 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
         # may interfere. This uses current perception, not its future cut-in time.
         uncertain_adjacent_traffic = self._observed_intruder() is not None
         slowing_peer = self.front_speed_mps < self.config["desired_speed_mps"] - 0.05
+        target = self._target_gap() if next_gap else None
+        if target is not None:
+            # After cancellation the named pair no longer matters: scope both triggers
+            # to the gap actually targeted. An intruder already in the lane is one of
+            # the gap's bounding vehicles and is handled by gap selection.
+            (lead, lead_speed), (back, _) = target
+            slowing_peer = lead_speed < self.config["desired_speed_mps"] - 0.05
+            intruder = self._observed_intruder()
+            margin = self.config["vehicle_length_m"]
+            uncertain_adjacent_traffic = (
+                intruder is not None
+                and not lateral_overlap(
+                    intruder, VehicleBody(intruder.x, 0.0, intruder.length, intruder.width)
+                )
+                and back.x - margin <= intruder.x <= lead.x + margin
+            )
         if (
             self.ramp_y_m > 0.0
             and not self._lane_change_started
-            and (not expected_entry or uncertain_adjacent_traffic or slowing_peer)
+            # An agreement's reserved slot may justify relaxing the reserve before entry.
+            # A fallback opening is opportunistic: keep the reserve until a lane change
+            # has actually started (one-step openings must not strand the ego).
+            and (next_gap or not expected_entry or uncertain_adjacent_traffic or slowing_peer)
         ):
             stopping_distance = max(
                 self.config["ramp_end_m"]
@@ -879,6 +1177,18 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
             if target_speed > stop_speed or self.ramp_speed_mps > stop_speed:
                 self.low_level_interventions += 1
             target_speed = min(target_speed, stop_speed)
+        if self._lane_change_started and self.ramp_y_m > 1e-6:
+            # Eligibility assumed the current speed for the rest of the lateral move.
+            # Never accelerate past what still lets that move finish on the ramp.
+            rate = self.config["lane_width_m"] / self.config["lane_change_duration_s"]
+            usable = (
+                self.config["ramp_end_m"] - self.config["vehicle_length_m"] / 2 - self.ramp_x_m
+            )
+            finish_cap = max(0.0, usable) / (self.ramp_y_m / rate + dt)
+            if finish_cap < max(target_speed, self.ramp_speed_mps):
+                self.low_level_interventions += 1
+            safety_speed_cap = min(safety_speed_cap, max(finish_cap, 0.0))
+            target_speed = min(target_speed, finish_cap)
         ego = self._bodies()[0]
         for front, front_speed in zip(
             self._traffic_bodies()[1:], self._traffic_speeds()[1:], strict=True
@@ -904,9 +1214,12 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
                 target_speed = front_bound
                 safety_speed_cap = min(safety_speed_cap, front_bound)
                 self.low_level_interventions += 1
+        # Gap tracking needs a stiffer speed loop than cruising, or the ego lags the
+        # moving gap and loses it; acceleration limits are unchanged.
+        tracking_gain = 1.5 if next_gap and aligned is not None else 0.5
         desired_accel = np.clip(
             min(
-                (target_speed - self.ramp_speed_mps) * 0.5,
+                (target_speed - self.ramp_speed_mps) * tracking_gain,
                 (safety_speed_cap - self.ramp_speed_mps) / dt,
             ),
             -self.config["max_decel_mps2"],
@@ -930,6 +1243,10 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
         rear_before = self.rear_speed_mps
         self.rear_speed_mps = max(0.0, rear_before + rear_accel * dt)
         self.rear_x_m += (rear_before + self.rear_speed_mps) * dt / 2
+        if self.follower_x_m is not None:
+            follower_before = self.follower_speed_mps
+            self.follower_speed_mps = max(0.0, follower_before + follower_accel * dt)
+            self.follower_x_m += (follower_before + self.follower_speed_mps) * dt / 2
 
     def _observation(self) -> np.ndarray:
         return encode(self._manager_values())
@@ -939,6 +1256,12 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
             PEERS[0]: {
                 "x_m": self.front_x_m,
                 "speed_mps": self.front_speed_mps,
+                # Honest current longitudinal acceleration, as in cooperative awareness messages.
+                "accel_mps2": (
+                    self.braking_pulse.accel_at(self.time_s, self.front_speed_mps)
+                    if self.braking_pulse is not None
+                    else 0.0
+                ),
                 "intent_origin_x_m": self._front_intent_origin_x_m,
                 "intent_speed_mps": self._front_intent_speed_mps,
                 "intent_at_s": 0.0,
@@ -981,6 +1304,7 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
         )
         session = self.communication.session
         intruder = self._observed_intruder()
+        follower = self._observed_follower()
         front_message = cache.get(PEERS[0])
         intent = front_message.payload if front_message else {}
         has_intent = all(
@@ -1026,6 +1350,13 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
             "intruder_relative_m": intruder.x - self.ramp_x_m if intruder else 0.0,
             "intruder_speed_mps": self.cut_in_trajectory.speed_mps if intruder else 0.0,
             "intruder_lateral_m": intruder.y if intruder else 0.0,
+            "intruder_lateral_speed_mps": self._observed_intruder_lateral_speed(),
+            "front_accel_mps2": (
+                front_message.payload.get("accel_mps2", 0.0) if front_message else 0.0
+            ),
+            "follower_detected": float(follower is not None),
+            "follower_relative_m": self.ramp_x_m - follower.x if follower else 0.0,
+            "follower_speed_mps": self.follower_speed_mps if follower else 0.0,
             "slot_occupied": float(self._slot_occupied(intruder, rear_x, front_x)),
             "front_intent_received": float(has_intent),
             "front_intent_position_error_m": (
@@ -1051,7 +1382,7 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
         }
         if not self.config.get("_prediction_replica", False):
             from rene.agreements.candidates import timing_candidates
-            from rene.prediction.rollouts import predict
+            from rene.prediction.rollouts import STATUS_CODES, predict
 
             snapshot = decode(encode(values))
             # Predictions see exactly the same clipping/float32 precision as PPO.
@@ -1060,11 +1391,10 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
                 keep = predict(snapshot, self.config)
                 fallback = predict(snapshot, self.config, fallback=True)
                 candidates = timing_candidates(snapshot, self.config)
-                statuses = {"UNKNOWN": 0, "INFEASIBLE": 1, "SAFE_COMPLETION": 2}
                 fields = {
-                    "keep_status": statuses[keep.status],
+                    "keep_status": STATUS_CODES[keep.status],
                     "keep_completion_s": keep.completion_s or 0,
-                    "fallback_status": statuses[fallback.status],
+                    "fallback_status": STATUS_CODES[fallback.status],
                     "fallback_completion_s": fallback.completion_s or 0,
                 }
                 for candidate in candidates:
@@ -1162,6 +1492,8 @@ class MergeLifecycleEnv(gym.Env[np.ndarray, int]):
         ego, front, rear = self._bodies()
         vehicle(front, (40, 120, 220))
         vehicle(rear, (40, 120, 220))
+        if self.follower_x_m is not None:
+            vehicle(self._follower_body(), (120, 120, 130))
         vehicle(ego, (220, 90, 40))
         if self.cut_in_trajectory is not None:
             vehicle(self.cut_in_trajectory.body_at(self.time_s), (160, 70, 190))

@@ -1,0 +1,96 @@
+{
+  "seed": 101,
+  "n_envs": 8,
+  "validation_episodes": 768,
+  "b2": {
+    "episodes": 768,
+    "merged": 299,
+    "agreement": 210,
+    "collision": 0,
+    "ramp_end": 0,
+    "canceled": 538,
+    "reward": 4.426
+  },
+  "points": [
+    {
+      "timesteps": 53248,
+      "episodes": 768,
+      "merged": 331,
+      "agreement": 58,
+      "collision": 0,
+      "ramp_end": 0,
+      "canceled": 710,
+      "reward": 5.086
+    },
+    {
+      "timesteps": 106496,
+      "episodes": 768,
+      "merged": 336,
+      "agreement": 0,
+      "collision": 0,
+      "ramp_end": 0,
+      "canceled": 768,
+      "reward": 5.293
+    },
+    {
+      "timesteps": 159744,
+      "episodes": 768,
+      "merged": 336,
+      "agreement": 0,
+      "collision": 0,
+      "ramp_end": 0,
+      "canceled": 768,
+      "reward": 5.293
+    },
+    {
+      "timesteps": 212992,
+      "episodes": 768,
+      "merged": 329,
+      "agreement": 39,
+      "collision": 0,
+      "ramp_end": 0,
+      "canceled": 720,
+      "reward": 5.104
+    },
+    {
+      "timesteps": 266240,
+      "episodes": 768,
+      "merged": 344,
+      "agreement": 0,
+      "collision": 0,
+      "ramp_end": 0,
+      "canceled": 768,
+      "reward": 5.514
+    },
+    {
+      "timesteps": 319488,
+      "episodes": 768,
+      "merged": 344,
+      "agreement": 0,
+      "collision": 0,
+      "ramp_end": 0,
+      "canceled": 768,
+      "reward": 5.515
+    },
+    {
+      "timesteps": 372736,
+      "episodes": 768,
+      "merged": 341,
+      "agreement": 0,
+      "collision": 0,
+      "ramp_end": 0,
+      "canceled": 768,
+      "reward": 5.436
+    },
+    {
+      "timesteps": 425984,
+      "episodes": 768,
+      "merged": 344,
+      "agreement": 0,
+      "collision": 0,
+      "ramp_end": 0,
+      "canceled": 768,
+      "reward": 5.515
+    }
+  ]
+}
